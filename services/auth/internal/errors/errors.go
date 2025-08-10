@@ -3,11 +3,12 @@ package errors
 import "errors"
 
 var (
-	ErrInternal        = errors.New("internal error")
-	ErrNotFound        = errors.New("resource not found")
-	ErrUnauthorized    = errors.New("unauthorized")
-	ErrConflict        = errors.New("resource already exists")
-	ErrTokenGeneration = errors.New("token generation failed ")
-	ErrInvalidEmail    = errors.New("invalid Email")
+	ErrInvalidEmail    = errors.New("invalid email")
 	ErrInvalidInput    = errors.New("invalid input")
+	ErrConflict        = errors.New("conflict")
+	ErrInternal        = errors.New("internal error")
+	ErrUnauthorized    = errors.New("unauthorized")
+	ErrTokenGeneration = errors.New("token generation failed")
+	ErrTooManyAttempts = errors.New("too many login attempts, account locked temporarily")
+	ErrNotFound        = errors.New("not found")
 )

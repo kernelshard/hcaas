@@ -81,16 +81,16 @@ func (s *jwtService) ValidateToken(tokenStr string) (string, string, error) {
 	if exp, ok := claims["exp"].(float64); ok {
 		if int64(exp) < now {
 			s.logger.Error("Token expired", slog.Int64("exp", int64(exp)), slog.Int64("now", now))
+			return "", "", jwt.ErrTokenExpired
 		}
-		return "", "", jwt.ErrTokenExpired
 	}
 
 	// check not before
 	if nbf, ok := claims["nbf"].(float64); ok {
 		if int64(nbf) > now {
 			s.logger.Error("Token not valid yet", slog.Int64("nbf", int64(nbf)), slog.Int64("now", now))
+			return "", "", jwt.ErrTokenNotValidYet
 		}
-		return "", "", jwt.ErrTokenNotValidYet
 	}
 
 	return userID, email, nil
