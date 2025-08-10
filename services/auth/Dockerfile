@@ -1,6 +1,5 @@
 # auth/Dockerfile
-
-FROM golang:1.24-alpine
+FROM golang:1.24.5-alpine
 
 WORKDIR /app
 

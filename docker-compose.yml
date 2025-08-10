@@ -2,30 +2,67 @@ services:
   hcaas_web:
     container_name: hcaas_web
     build:
-      context: services/url
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/url/Dockerfile
     depends_on:
-      hcaas_db:
-        condition: service_started
-      hcaas_auth:
-        condition: service_started
-      hcaas_kafka:
-        condition: service_healthy
-
+      - hcaas_db
+      - hcaas_auth
+      - hcaas_jaeger_all_in_one
     ports:
       - "8080:8080"
     restart: unless-stopped
     env_file:
       - ./services/url/.env
     environment:
-      - DATABASE_URL=postgres://hcaas_user:hcaas_pass@hcaas_db:5432/hcaas_db
-      - ENV=production
-      - AUTH_SVC_URL=http://hcaas_auth:8081/
+      DATABASE_URL: postgres://hcaas_user:hcaas_pass@hcaas_db:5432/hcaas_db
+      ENV: production
+      AUTH_SVC_URL: http://hcaas_auth:8081/
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://hcaas_jaeger_all_in_one:4317
+      OTEL_SERVICE_NAME: hcaas_web_service
     volumes:
       - ./services/url/.env:/.env
     networks:
       - hcaas_backend_network
       - hcaas_net
+
+  hcaas_auth:
+    container_name: hcaas_auth
+    build:
+      context: ./services/auth
+    env_file:
+      - ./services/auth/.env
+    ports:
+      - "8081:8081"
+    depends_on:
+      - hcaas_auth_db
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://hcaas_jaeger_all_in_one:4317
+      OTEL_SERVICE_NAME: hcaas_auth_service
+    networks:
+      - hcaas_backend_network
+
+  hcaas_notification:
+    container_name: hcaas_notification
+    build:
+      context: ./services/notification
+    depends_on:
+      hcaas_notification_db:
+        condition: service_healthy
+      hcaas_kafka:
+        condition: service_healthy
+      hcaas_jaeger_all_in_one:
+        condition: service_started
+    env_file:
+      - ./services/notification/.env
+    environment:
+      DB_URL: postgres://hcaas_notification_user:hcaas_notification_pass@hcaas_notification_db:5432/hcaas_notification_db?sslmode=disable
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://hcaas_jaeger_all_in_one:4317
+      OTEL_SERVICE_NAME: hcaas_notification_service
+    ports:
+      - "8082:8082"
+    networks:
+      - hcaas_net
+      - hcaas_backend_network
 
   hcaas_db:
     container_name: hcaas_db
@@ -63,8 +100,8 @@ services:
     volumes:
       - grafana-storage:/var/lib/grafana
     environment:
-      - GF_SECURITY_ADMIN_USER=user
-      - GF_SECURITY_ADMIN_PASSWORD=pass#1234
+      GF_SECURITY_ADMIN_USER: user
+      GF_SECURITY_ADMIN_PASSWORD: pass#1234
     networks:
       - hcaas_backend_network
 
@@ -75,20 +112,6 @@ services:
       - "9100:9100"
     networks:
       - hcaas_backend_network
-
-  hcaas_auth:
-    container_name: hcaas_auth
-    build:
-      context: ./services/auth
-    env_file:
-      - ./services/auth/.env
-    ports:
-      - "8081:8081"
-    depends_on:
-      - hcaas_auth_db
-    networks:
-      - hcaas_backend_network
-
 
   hcaas_auth_db:
     container_name: hcaas_auth_db
@@ -106,25 +129,6 @@ services:
     networks:
       - hcaas_backend_network
 
-  hcaas_notification:
-    container_name: hcaas_notification
-    build:
-      context: ./services/notification
-    depends_on:
-      hcaas_notification_db:
-        condition: service_healthy
-      hcaas_kafka:
-        condition: service_healthy
-
-    env_file:
-      - ./services/notification/.env
-    environment:
-      - DB_URL=postgres://hcaas_notification_user:hcaas_notification_pass@hcaas_notification_db:5432/hcaas_notification_db?sslmode=disable
-    ports:
-      - "8082:8082"
-    networks:
-      - hcaas_net
-
   hcaas_notification_db:
     image: postgres:16-alpine
     container_name: hcaas_notification_db
@@ -134,7 +138,7 @@ services:
       POSTGRES_DB: hcaas_notification_db
       POSTGRES_PASSWORD: hcaas_notification_pass
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U hcaas_notification_user -d hcaas_notification_db" ]
+      test: ["CMD-SHELL", "pg_isready -U hcaas_notification_user -d hcaas_notification_db"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -151,7 +155,7 @@ services:
     image: bitnami/zookeeper:3.8
     container_name: hcaas_zookeeper
     environment:
-      - ALLOW_ANONYMOUS_LOGIN=yes
+      ALLOW_ANONYMOUS_LOGIN: "yes"
     ports:
       - "2181:2181"
     networks:
@@ -172,13 +176,24 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     healthcheck:
-      test: [ "CMD-SHELL", "nc -z hcaas_kafka 9092 || exit 1" ]
+      test: ["CMD-SHELL", "nc -z hcaas_kafka 9092 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     networks:
       - hcaas_net
+
+  hcaas_jaeger_all_in_one:
+    image: jaegertracing/all-in-one:1.56
+    container_name: hcaas_jaeger_all_in_one
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    networks:
+      - hcaas_backend_network
 
 volumes:
   pgdata:

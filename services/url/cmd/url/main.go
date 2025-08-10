@@ -8,11 +8,13 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/joho/godotenv"
 
+	"github.com/samims/hcaas/pkg/tracing"
 	"github.com/samims/hcaas/services/url/internal/checker"
 	"github.com/samims/hcaas/services/url/internal/handler"
 	"github.com/samims/hcaas/services/url/internal/kafka"
@@ -23,7 +25,18 @@ import (
 	"github.com/samims/hcaas/services/url/internal/storage"
 )
 
+const (
+	serviceName = "url-service"
+	// collectorEndpoint = "otel-collector:4371" //mEnsure this matches your docker-compose setup
+	// collectorEndpoint = "hcaas_jaeger_all_in_one:4317"
+)
+
 func main() {
+
+	// Setup signal handling for graceful shutdown
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	l := logger.NewLogger()
 	slog.SetDefault(l)
 
@@ -33,7 +46,25 @@ func main() {
 		l.Error("Error loading .env file", "err", err)
 	}
 
-	ctx := context.Background()
+	// Create a new tracing configuration from environment variables.
+	tracerCfg := tracing.NewConfig()
+	if err := tracerCfg.Validate(); err != nil {
+		l.Error("Invalid tracing config", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	// ---- OpenTelemetry Tracing Setup ----
+	tracerShutdown, err := tracing.SetupTracing(ctx, l)
+	if err != nil {
+		l.Error("Failed to initialize OpenTelemetry TracerProvider", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	// IMPORTANT: Defer the tracer shutdown function to ensure all spans are flushed
+	// before the application exits.
+	defer tracerShutdown(context.Background())
+	// --- End OpenTelemetry Tracing Setup ---
+
 	dbPool, err := storage.NewPostgresPool(ctx)
 	if err != nil {
 		l.Error("Failed to connect to database", "err", err)
@@ -42,8 +73,9 @@ func main() {
 	defer dbPool.Close()
 
 	// Initialize layers
-	ps := storage.NewPostgresStorage(dbPool)
-	urlSvc := service.NewURLService(ps, l)
+	tracer := tracing.NewTracer(tracing.GetTracer(serviceName))
+	ps := storage.NewPostgresStorage(dbPool, tracer)
+	urlSvc := service.NewURLService(ps, l, tracer)
 	healthSvc := service.NewHealthService(ps, l)
 
 	// Kafka producers setup
@@ -71,7 +103,7 @@ func main() {
 	var wg sync.WaitGroup
 
 	l.Info("Before NewProducer")
-	notificationProducer := kafka.NewProducer(kafkaAsyncProducer, kafkaNotifTopic, l, &wg)
+	notificationProducer := kafka.NewProducer(kafkaAsyncProducer, kafkaNotifTopic, l, &wg, tracer)
 	l.Info("After NewProducer")
 
 	l.Info("Calling notificationProducer.Start()")
@@ -79,7 +111,7 @@ func main() {
 	notificationProducer.Start(ctx)
 
 	httpClient := &http.Client{Timeout: 5 * time.Second}
-	chkr := checker.NewURLChecker(urlSvc, l, httpClient, 1*time.Minute, notificationProducer)
+	chkr := checker.NewURLChecker(urlSvc, l, httpClient, 1*time.Minute, notificationProducer, tracer)
 	go chkr.Start(ctx)
 
 	urlHandler := handler.NewURLHandler(urlSvc, l)
@@ -88,7 +120,10 @@ func main() {
 	// Setup router and server
 	port := ":8080"
 
-	r := router.NewRouter(urlHandler, healthHandler, l)
+	r := router.NewRouter(urlHandler, healthHandler, l, serviceName)
+	// Apply OpenTelemetry HTTP server middleware to the router.
+	// This will automatically create spans for incoming requests and propagate context.
+	// Pass the service name to the middleware
 
 	server := &http.Server{
 		Addr:    port,

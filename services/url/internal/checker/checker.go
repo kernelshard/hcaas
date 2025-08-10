@@ -7,6 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/samims/hcaas/pkg/tracing"
 	"github.com/samims/hcaas/services/url/internal/kafka"
 	"github.com/samims/hcaas/services/url/internal/metrics"
 	"github.com/samims/hcaas/services/url/internal/model"
@@ -24,6 +27,7 @@ type URLChecker struct {
 	httpClient           *http.Client
 	interval             time.Duration
 	notificationProducer kafka.NotificationProducer
+	tracer               *tracing.Tracer
 }
 
 func NewURLChecker(
@@ -32,10 +36,14 @@ func NewURLChecker(
 	client *http.Client,
 	interval time.Duration,
 	producer kafka.NotificationProducer,
+	tracer *tracing.Tracer,
 ) *URLChecker {
 	if producer == nil {
 		// This panic indicates a serious configuration error that should be caught
 		panic("NewURLChecker: notificationProducer cannot be nil")
+	}
+	if tracer == nil {
+		panic("NewURLChecker: tracer cannot be nil")
 	}
 	return &URLChecker{
 		svc:                  svc,
@@ -43,6 +51,7 @@ func NewURLChecker(
 		httpClient:           client,
 		interval:             interval,
 		notificationProducer: producer,
+		tracer:               tracer,
 	}
 }
 
@@ -64,9 +73,13 @@ func (uc *URLChecker) Start(ctx context.Context) {
 }
 
 func (uc *URLChecker) CheckAllURLs(ctx context.Context) {
+	ctx, span := uc.tracer.StartServerSpan(ctx, "CheckAllURLs")
+	defer span.End()
+
 	urls, err := uc.svc.GetAll(ctx)
 	if err != nil {
 		uc.logger.Error("Failed to fetch URLs", slog.Any("error", err))
+		span.RecordError(err)
 		return
 	}
 
@@ -80,10 +93,19 @@ func (uc *URLChecker) CheckAllURLs(ctx context.Context) {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
+			ctx, span := uc.tracer.StartClientSpan(ctx, "CheckURL")
+			defer span.End()
+
 			uc.logger.Info("Checking URL", slog.String("id", url.ID), slog.String("address", url.Address))
 
 			status := uc.ping(ctx, url.Address)
 			uc.logger.Info("After ping", slog.String("url_id", url.ID), slog.Any("address", url.Address), slog.String("status", status))
+
+			span.SetAttributes(
+				attribute.String("url.id", url.ID),
+				attribute.String("url.address", url.Address),
+				attribute.String("url.status", status),
+			)
 
 			err := uc.svc.UpdateStatus(ctx, url.ID, status)
 			if err != nil {
@@ -92,6 +114,7 @@ func (uc *URLChecker) CheckAllURLs(ctx context.Context) {
 					slog.String("status", status),
 					slog.Any("error", err),
 				)
+				span.RecordError(err)
 			} else {
 				uc.logger.Info("URL status updated",
 					slog.String("urlID", url.ID),
@@ -112,6 +135,7 @@ func (uc *URLChecker) CheckAllURLs(ctx context.Context) {
 						uc.logger.Error("Failed to publish notification",
 							slog.String("url_id", url.ID),
 							slog.Any("error", err))
+						span.RecordError(err)
 					}
 				}
 			}

@@ -10,6 +10,9 @@ import (
 
 	"github.com/IBM/sarama"
 
+	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/samims/hcaas/pkg/tracing"
 	"github.com/samims/hcaas/services/url/internal/model"
 )
 
@@ -26,11 +29,12 @@ type producer struct {
 	log           *slog.Logger
 	wg            *sync.WaitGroup
 	closeOnce     sync.Once
+	tracer        *tracing.Tracer
 }
 
-// NewProducer uses DI to inject AsyncProducer, logger, topic, and WaitGroup.
-func NewProducer(asyncProducer sarama.AsyncProducer, topic string, log *slog.Logger, wg *sync.WaitGroup) NotificationProducer {
-	if asyncProducer == nil || log == nil || wg == nil {
+// NewProducer uses DI to inject AsyncProducer, logger, topic, WaitGroup, and tracer.
+func NewProducer(asyncProducer sarama.AsyncProducer, topic string, log *slog.Logger, wg *sync.WaitGroup, tracer *tracing.Tracer) NotificationProducer {
+	if asyncProducer == nil || log == nil || wg == nil || tracer == nil {
 		panic("NewProducer: nil dependencies provided")
 	}
 	if topic == "" {
@@ -41,6 +45,7 @@ func NewProducer(asyncProducer sarama.AsyncProducer, topic string, log *slog.Log
 		topic:         topic,
 		log:           log,
 		wg:            wg,
+		tracer:        tracer,
 	}
 }
 
@@ -95,22 +100,30 @@ func (p *producer) handleErrors(ctx context.Context) {
 	}
 }
 
-// Publish sends a notification to the Kafka topic
+// Publish sends a notification to the Kafka topic with tracing and context propagation
 func (p *producer) Publish(ctx context.Context, notif model.Notification) error {
+	ctx, span := p.tracer.StartClientSpan(ctx, "KafkaPublish")
+	defer span.End()
+
 	p.log.Info("Kafka publish called ")
 	data, err := json.Marshal(notif)
 	if err != nil {
 		p.log.Error("Failed to marshal notification",
 			slog.Any("notification", notif),
 			slog.Any("error", err))
+		span.RecordError(err)
 		return fmt.Errorf("failed to marshal notification: %w", err)
 	}
+
+	// Inject trace context into headers for propagation to consumer
+	headers := tracing.InjectTraceContext(ctx, nil)
 
 	msg := &sarama.ProducerMessage{
 		Topic:     p.topic,
 		Key:       sarama.StringEncoder(notif.UrlID),
 		Value:     sarama.ByteEncoder(data),
 		Timestamp: time.Now(),
+		Headers:   headers,
 	}
 
 	select {
@@ -119,10 +132,16 @@ func (p *producer) Publish(ctx context.Context, notif model.Notification) error 
 			slog.String("topic", p.topic),
 			slog.String("key", notif.UrlID),
 			slog.Any("notification", notif))
+		span.SetAttributes(
+			attribute.String("kafka.topic", p.topic),
+			attribute.String("kafka.key", notif.UrlID),
+			attribute.String("notification.type", notif.Type),
+		)
 		return nil
 	case <-ctx.Done():
 		p.log.Warn("Publish cancelled by context",
 			slog.String("url_id", notif.UrlID))
+		span.SetStatus(2, "Publish cancelled by context") // 2 = Error
 		return ctx.Err()
 	}
 }
