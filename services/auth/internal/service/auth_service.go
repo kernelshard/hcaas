@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"regexp"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -26,23 +27,48 @@ type authService struct {
 	store    storage.UserStorage
 	logger   *slog.Logger
 	tokenSvc TokenService
+	// Add rate limiting map or store here if needed
+	loginAttempts   map[string]int
+	lockoutTime     map[string]time.Time
+	lockoutDuration time.Duration
+	maxAttempts     int
 }
 
 func NewAuthService(store storage.UserStorage, logger *slog.Logger, tokenSvc TokenService) AuthService {
 	l := logger.With("layer", "service", "component", "authService")
-	return &authService{store: store, logger: l, tokenSvc: tokenSvc}
+	return &authService{
+		store:           store,
+		logger:          l,
+		tokenSvc:        tokenSvc,
+		loginAttempts:   make(map[string]int),
+		lockoutTime:     make(map[string]time.Time),
+		lockoutDuration: 15 * time.Minute,
+		maxAttempts:     5,
+	}
 }
 
 func (s *authService) Register(ctx context.Context, email, password string) (*model.User, error) {
 	s.logger.Info("Register called", slog.String("email", email))
 
-	if !regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`).MatchString(email) {
+	if !regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`).MatchString(email) {
 		s.logger.Error("Invalid email")
 		return nil, appErr.ErrInvalidEmail
 	}
 
-	if len(password) == 0 {
-		s.logger.Error("Invalid password")
+	if len(password) < 8 {
+		s.logger.Error("Password too short")
+		return nil, appErr.ErrInvalidInput
+	}
+
+	// Enforce password complexity: at least one uppercase, one lowercase, one digit, one special char
+	var (
+		hasUpper   = regexp.MustCompile(`[A-Z]`).MatchString
+		hasLower   = regexp.MustCompile(`[a-z]`).MatchString
+		hasDigit   = regexp.MustCompile(`[0-9]`).MatchString
+		hasSpecial = regexp.MustCompile(`[\W_]`).MatchString
+	)
+	if !hasUpper(password) || !hasLower(password) || !hasDigit(password) || !hasSpecial(password) {
+		s.logger.Error("Password does not meet complexity requirements")
 		return nil, appErr.ErrInvalidInput
 	}
 
@@ -69,6 +95,18 @@ func (s *authService) Register(ctx context.Context, email, password string) (*mo
 func (s *authService) Login(ctx context.Context, email, password string) (*model.User, string, error) {
 	s.logger.Info("Login called", slog.String("email", email))
 
+	// Check if user is locked out
+	if lockoutUntil, locked := s.lockoutTime[email]; locked {
+		if time.Now().Before(lockoutUntil) {
+			s.logger.Warn("User account locked due to too many failed login attempts", slog.String("email", email))
+			return nil, "", appErr.ErrTooManyAttempts
+		} else {
+			// Lockout expired, reset
+			delete(s.lockoutTime, email)
+			s.loginAttempts[email] = 0
+		}
+	}
+
 	user, err := s.store.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -82,9 +120,19 @@ func (s *authService) Login(ctx context.Context, email, password string) (*model
 
 	// Compare the provided password with the stored hashed password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+		s.loginAttempts[email]++
+		if s.loginAttempts[email] >= s.maxAttempts {
+			s.lockoutTime[email] = time.Now().Add(s.lockoutDuration)
+			s.logger.Warn("User account locked due to too many failed login attempts", slog.String("email", email))
+			return nil, "", appErr.ErrTooManyAttempts
+		}
 		s.logger.Warn("Invalid password", slog.String("email", email))
 		return nil, "", appErr.ErrUnauthorized
 	}
+
+	// Reset login attempts on successful login
+	s.loginAttempts[email] = 0
+
 	token, err := s.tokenSvc.GenerateToken(user)
 	if err != nil {
 		s.logger.Error("Token generation failed ", slog.String("email", email))
