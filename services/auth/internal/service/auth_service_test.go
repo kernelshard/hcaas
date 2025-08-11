@@ -52,7 +52,7 @@ func Test_authService_Register(t *testing.T) {
 			args: args{
 				ctx:      context.Background(),
 				email:    "test1@example.com",
-				password: "password123",
+				password: "Password@123",
 			},
 			want: &model.User{
 				Email: "test1@example.com",
@@ -74,7 +74,7 @@ func Test_authService_Register(t *testing.T) {
 			args: args{
 				ctx:      context.Background(),
 				email:    "test1@example.com",
-				password: "password123",
+				password: "Password@123",
 			},
 			want:    nil,
 			wantErr: true,
@@ -92,7 +92,7 @@ func Test_authService_Register(t *testing.T) {
 			args: args{
 				ctx:      context.Background(),
 				email:    "",
-				password: "password123",
+				password: "Password@123",
 			},
 			want:    nil,
 			wantErr: true,
@@ -110,7 +110,7 @@ func Test_authService_Register(t *testing.T) {
 			args: args{
 				ctx:      context.Background(),
 				email:    "test1.example.com",
-				password: "password123",
+				password: "Password@123",
 			},
 			want:    nil,
 			wantErr: true,
