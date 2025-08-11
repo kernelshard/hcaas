@@ -111,7 +111,8 @@ func main() {
 	notificationProducer.Start(ctx)
 
 	httpClient := &http.Client{Timeout: 5 * time.Second}
-	chkr := checker.NewURLChecker(urlSvc, l, httpClient, 1*time.Minute, notificationProducer, tracer)
+	concurrencyLimit := 10
+	chkr := checker.NewURLChecker(urlSvc, l, httpClient, 1*time.Minute, notificationProducer, tracer, concurrencyLimit)
 	go chkr.Start(ctx)
 
 	urlHandler := handler.NewURLHandler(urlSvc, l)
