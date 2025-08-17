@@ -79,6 +79,10 @@ func (t *Tracer) AddAttributes(span trace.Span, attrs ...attribute.KeyValue) {
 	span.SetAttributes(attrs...)
 }
 
+func (t *Tracer) AddEvent(span trace.Span, name string, attrs ...attribute.KeyValue) {
+	span.AddEvent(name, trace.WithAttributes(attrs...))
+}
+
 // AddGoogleCloudAttributes adds Google Cloud specific attributes
 func (t *Tracer) AddGoogleCloudAttributes(span trace.Span, projectID, region, zone string) {
 	span.SetAttributes(
@@ -130,4 +134,12 @@ func (t *Tracer) AddKafkaAttributes(span trace.Span, topic, operation string, pa
 // GetTracer returns the global tracer
 func GetTracer(name string) trace.Tracer {
 	return otel.Tracer(name)
+}
+
+// GetTraceID extracts the trace ID from the context
+func (t *Tracer) GetTraceID(ctx context.Context) string {
+	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+		return span.SpanContext().TraceID().String()
+	}
+	return ""
 }

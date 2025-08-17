@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -60,8 +59,6 @@ func (s *userStorage) GetUserByEmail(ctx context.Context, email string) (*model.
 	if err := row.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt); err != nil {
 		return nil, err
 	}
-	fmt.Println(user)
-
 	return &user, nil
 }
 
