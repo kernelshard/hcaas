@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/samims/otelkit"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/samims/hcaas/services/auth/internal/service"
 )
@@ -15,6 +16,7 @@ const (
 	KeyError = "error"
 )
 
+// AuthHandler handles authentication-related HTTP requests.
 type AuthHandler struct {
 	authSvc service.AuthService
 	logger  *slog.Logger
@@ -34,8 +36,11 @@ func respondError(w http.ResponseWriter, status int, message string) {
 
 // Register handles User Registration/Signup
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	ctx, span := h.tracer.StartServerSpan(r.Context(), "Register")
+	ctx, span := h.tracer.StartServerSpan(r.Context(), "auth_handler.Register")
 	defer span.End()
+	span.SetAttributes(
+		attribute.String("handler.component", "auth_handler"),
+	)
 	var req struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -58,8 +63,12 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	ctx, span := h.tracer.StartServerSpan(r.Context(), "Login")
+	ctx, span := h.tracer.StartServerSpan(r.Context(), "auth_handler.Login")
 	defer span.End()
+	span.SetAttributes(
+		attribute.String("operation", "user_login"),
+		attribute.String("handler.component", "auth_handler"),
+	)
 	var req struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -83,8 +92,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) GetUser(w http.ResponseWriter, r *http.Request) {
-	ctx, span := h.tracer.StartServerSpan(r.Context(), "GetUser")
+	ctx, span := h.tracer.StartServerSpan(r.Context(), "auth_handler.GetUser")
 	defer span.End()
+	span.SetAttributes(
+		attribute.String("operation", "get_user"),
+		attribute.String("handler.component", "auth_handler"),
+	)
 	h.logger.Info("Get User handler")
 	email := r.URL.Query().Get("email")
 
@@ -104,8 +117,12 @@ func (h *AuthHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
-	_, span := h.tracer.StartServerSpan(r.Context(), "Validate")
+	_, span := h.tracer.StartServerSpan(r.Context(), "auth_handler.Validate")
 	defer span.End()
+	span.SetAttributes(
+		attribute.String("operation", "validate_token"),
+		attribute.String("handler.component", "auth_handler"),
+	)
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
 		respondError(w, http.StatusUnauthorized, "missing token")

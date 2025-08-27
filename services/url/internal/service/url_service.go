@@ -33,7 +33,6 @@ func getUserIDFromContext(ctx context.Context) (string, error) {
 	if userID == "" {
 		return "", appErr.NewInternal("empty user_id in context - verify auth service is returning valid user identifier")
 	}
-
 	slog.Debug("Successfully extracted user_id from context",
 		"user_id", userID,
 		"context_keys", fmt.Sprintf("%+v", ctx))
@@ -73,6 +72,7 @@ func (s *urlService) GetAllByUserID(ctx context.Context) ([]model.URL, error) {
 	if err != nil {
 		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("error.type", "context_error"))
 		return nil, err
 	}
 	// Add the user ID as an attribute to the span.
@@ -85,6 +85,7 @@ func (s *urlService) GetAllByUserID(ctx context.Context) ([]model.URL, error) {
 			slog.String("user_id", userID))
 		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("error.type", "storage_error"))
 		return nil, appErr.NewInternal("failed to fetch URLs: %v", err)
 	}
 	span.SetAttributes(attribute.Int("url.count", len(userURLs)))
@@ -102,13 +103,13 @@ func (s *urlService) GetAll(ctx context.Context) ([]model.URL, error) {
 		s.logger.Error("failed to fetch URLs", slog.String("error", err.Error()))
 		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("error.type", "storage_error"))
 		return nil, appErr.NewInternal("failed to fetch URLs: %v", err)
 	}
 
 	span.SetAttributes(attribute.Int("url.count", len(urls)))
 	s.logger.Info("GetAll succeeded", slog.Int("count", len(urls)))
 	return urls, nil
-
 }
 
 func (s *urlService) GetByID(ctx context.Context, id string) (*model.URL, error) {
@@ -122,11 +123,12 @@ func (s *urlService) GetByID(ctx context.Context, id string) (*model.URL, error)
 	if err != nil {
 		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("error.type", "context_error"))
 		return nil, err
 	}
 
 	span.SetAttributes(attribute.String("user.id", userID))
-	span.SetAttributes(attribute.String("url.id", userID))
+	span.SetAttributes(attribute.String("url.id", id))
 
 	url, err := s.store.FindByID(ctx, id)
 	if err != nil {
@@ -134,6 +136,7 @@ func (s *urlService) GetByID(ctx context.Context, id string) (*model.URL, error)
 			s.logger.Warn("URL not found", slog.String("id", id), slog.String("user_id", userID))
 			otelkit.RecordError(span, err)
 			span.SetStatus(codes.Error, err.Error())
+			span.SetAttributes(attribute.String("error.type", "not_found_error"))
 			return nil, appErr.NewNotFound(fmt.Sprintf("URL with ID %s not found", id))
 		}
 		s.logger.Error("failed to fetch URL by ID",
@@ -143,6 +146,7 @@ func (s *urlService) GetByID(ctx context.Context, id string) (*model.URL, error)
 
 		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("error.type", "storage_error"))
 		return nil, appErr.NewInternal("failed to fetch URL by ID: %v", err)
 	}
 
@@ -154,6 +158,8 @@ func (s *urlService) GetByID(ctx context.Context, id string) (*model.URL, error)
 			slog.String("owned_by", url.UserID))
 		ownershipErr := fmt.Errorf("URL access denied %s for user %s", id, userID)
 		otelkit.RecordError(span, ownershipErr)
+		span.SetStatus(codes.Error, ownershipErr.Error())
+		span.SetAttributes(attribute.String("error.type", "access_denied"))
 		return nil, appErr.NewNotFound(fmt.Sprintf("URL with ID %s not found", id))
 	}
 
@@ -175,35 +181,42 @@ func (s *urlService) Add(ctx context.Context, url model.URL) error {
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("error.type", "context_error"))
 		return err
 	}
 	url.UserID = userID
 	span.SetAttributes(attribute.String("user.id", userID))
 
-	// Check if URL address already exists for this user
+	// Check if the URL address already exists for this user
 	existingURL, err := s.store.FindByAddress(ctx, url.Address)
-	if err == nil && existingURL.UserID == userID {
-		s.logger.Warn("URL address already exists for user",
-			slog.String("address", url.Address),
-			slog.String("user_id", userID))
-		err = appErr.NewConflict("URL address %s already exists", url.Address)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return err
+	if err == nil {
+		if existingURL.UserID == userID {
+			s.logger.Warn("URL address already exists for user",
+				slog.String("address", url.Address),
+				slog.String("user_id", userID))
+			err = appErr.NewConflict("URL address %s already exists", url.Address)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+			span.SetAttributes(attribute.String("error.type", "url_conflict"))
+			return err
+		}
+		// Continue: different user, allow duplicate
 	} else if !errors.Is(err, appErr.ErrNotFound) {
 		s.logger.Error("failed to check URL address uniqueness",
 			slog.String("address", url.Address),
 			slog.Any("error", err))
 		err = appErr.NewInternal("failed to check URL address uniqueness: %v", err)
-
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 
+	// Generate a new ID if missing
 	if url.ID == "" {
 		url.ID = uuid.New().String()
 	}
+
+	// Save the new URL
 	if err := s.store.Save(ctx, &url); err != nil {
 		if errors.Is(err, appErr.ErrConflict) {
 			s.logger.Warn("URL already exists", slog.String("URL", url.Address))

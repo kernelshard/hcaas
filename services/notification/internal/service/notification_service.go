@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/samims/hcaas/services/notification/internal/model"
@@ -60,6 +61,8 @@ func (s *notificationService) Send(ctx context.Context, n *model.Notification) e
 	if n == nil {
 		err := fmt.Errorf("notification cannot be nil")
 		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("error.type", "nil_notification"))
 		return err
 	}
 	// Simulate sending notification service
@@ -76,8 +79,11 @@ func (s *notificationService) Send(ctx context.Context, n *model.Notification) e
 	if err := s.store.Save(ctx, n); err != nil {
 		span.RecordError(err)
 		s.l.Error("Failed to save notification to store", slog.String("url_id", n.UrlId), slog.Any("error", err))
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("error.type", "storage_error"))
 		return err
 	}
+	span.SetAttributes(attribute.String("result", "success"))
 	return nil
 }
 
@@ -147,6 +153,8 @@ func (s *notificationService) processNotification(ctx context.Context, n *model.
 	if n == nil {
 		err := fmt.Errorf("notification cannot be nil")
 		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("error.type", "nil_notification"))
 		return err
 	}
 
@@ -159,10 +167,14 @@ func (s *notificationService) processNotification(ctx context.Context, n *model.
 	if err := s.delivery.Deliver(ctx, n); err != nil {
 		span.RecordError(err)
 		s.l.ErrorContext(ctx, "Notification delivery failed", slog.Int("id", n.ID), slog.String("url_id", n.UrlId), slog.Any("error", err))
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("error.type", "delivery_error"))
+
 		updateErr := s.store.UpdateStatus(ctx, n.ID, model.StatusFailed)
 		if updateErr != nil {
 			span.RecordError(updateErr)
 			s.l.ErrorContext(ctx, "Failed to update status to failed after delivery error", slog.Int("id", n.ID), slog.Any("delivery_error", err), slog.Any("update_error", updateErr))
+			span.SetAttributes(attribute.String("error.type", "delivery_and_update_error"))
 			return fmt.Errorf("notification delivery failed: %w; status update to 'failed' also failed: %w", err, updateErr)
 		}
 		return err
@@ -177,7 +189,10 @@ func (s *notificationService) processNotification(ctx context.Context, n *model.
 	if updateErr != nil {
 		span.RecordError(updateErr)
 		s.l.Error("Failed to update status to sent after successful delivery", slog.Int("id", n.ID), slog.Any("error", updateErr))
+		span.SetStatus(codes.Error, updateErr.Error())
+		span.SetAttributes(attribute.String("error.type", "status_update_error"))
 		return updateErr
 	}
+	span.SetAttributes(attribute.String("result", "success"))
 	return nil
 }
