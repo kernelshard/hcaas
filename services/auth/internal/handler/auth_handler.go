@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/samims/otelkit"
+
 	"github.com/samims/hcaas/services/auth/internal/service"
 )
 
@@ -16,10 +18,11 @@ const (
 type AuthHandler struct {
 	authSvc service.AuthService
 	logger  *slog.Logger
+	tracer  *otelkit.Tracer
 }
 
-func NewAuthHandler(authSvc service.AuthService, logger *slog.Logger) *AuthHandler {
-	return &AuthHandler{authSvc: authSvc, logger: logger}
+func NewAuthHandler(authSvc service.AuthService, logger *slog.Logger, tracer *otelkit.Tracer) *AuthHandler {
+	return &AuthHandler{authSvc: authSvc, logger: logger, tracer: tracer}
 }
 
 // inline error responder
@@ -31,17 +34,21 @@ func respondError(w http.ResponseWriter, status int, message string) {
 
 // Register handles User Registration/Signup
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.tracer.StartServerSpan(r.Context(), "Register")
+	defer span.End()
 	var req struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		otelkit.RecordError(span, err)
 		h.logger.Warn("Invalid register payload", slog.String("error", err.Error()))
 		respondError(w, http.StatusBadRequest, "invalid payload")
 		return
 	}
-	user, err := h.authSvc.Register(r.Context(), req.Email, req.Password)
+	user, err := h.authSvc.Register(ctx, req.Email, req.Password)
 	if err != nil {
+		otelkit.RecordError(span, err)
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -51,18 +58,22 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.tracer.StartServerSpan(r.Context(), "Login")
+	defer span.End()
 	var req struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		otelkit.RecordError(span, err)
 		respondError(w, http.StatusBadRequest, "invalid payload")
 		return
 	}
 
-	_, token, err := h.authSvc.Login(r.Context(), req.Email, req.Password)
+	_, token, err := h.authSvc.Login(ctx, req.Email, req.Password)
 	if err != nil {
+		otelkit.RecordError(span, err)
 		respondError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
@@ -72,6 +83,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) GetUser(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.tracer.StartServerSpan(r.Context(), "GetUser")
+	defer span.End()
 	h.logger.Info("Get User handler")
 	email := r.URL.Query().Get("email")
 
@@ -79,9 +92,10 @@ func (h *AuthHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing email query param", http.StatusBadRequest)
 		return
 	}
-	user, err := h.authSvc.GetUserByEmail(r.Context(), email)
+	user, err := h.authSvc.GetUserByEmail(ctx, email)
 
 	if err != nil {
+		otelkit.RecordError(span, err)
 		http.Error(w, "user not found", http.StatusNotFound)
 		return
 	}
@@ -90,6 +104,8 @@ func (h *AuthHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
+	_, span := h.tracer.StartServerSpan(r.Context(), "Validate")
+	defer span.End()
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
 		respondError(w, http.StatusUnauthorized, "missing token")
@@ -99,6 +115,7 @@ func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimPrefix(authHeader, "Bearer ")
 	userID, email, err := h.authSvc.ValidateToken(token)
 	if err != nil {
+		otelkit.RecordError(span, err)
 		respondError(w, http.StatusUnauthorized, "invalid token")
 	}
 
@@ -112,6 +129,7 @@ func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		otelkit.RecordError(span, err)
 		h.logger.Error("Failed to encode validation response",
 			slog.String("error", err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
