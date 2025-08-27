@@ -3,15 +3,13 @@ package storage
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func NewPostgresPool(ctx context.Context) (*pgxpool.Pool, error) {
-	dsn := os.Getenv("DATABASE_URL")
+func NewPostgresPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	if dsn == "" {
-		return nil, fmt.Errorf("DATABASE_URL not set in environment")
+		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
 
 	pool, err := pgxpool.New(ctx, dsn)

@@ -9,16 +9,16 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/samims/hcaas/pkg/tracing"
 	"github.com/samims/hcaas/services/url/internal/kafka"
 	"github.com/samims/hcaas/services/url/internal/metrics"
 	"github.com/samims/hcaas/services/url/internal/model"
 	"github.com/samims/hcaas/services/url/internal/service"
+	"github.com/samims/otelkit"
 )
 
 const (
-	Healthy   = "healthy"
-	UnHealthy = "unhealthy"
+	StatusUP   = "up"
+	StatusDown = "down"
 )
 
 type URLChecker struct {
@@ -27,7 +27,7 @@ type URLChecker struct {
 	httpClient           *http.Client
 	interval             time.Duration
 	notificationProducer kafka.NotificationProducer
-	tracer               *tracing.Tracer
+	tracer               *otelkit.Tracer
 	concurrencyLimit     int
 	httpTimeOut          time.Duration
 }
@@ -38,7 +38,7 @@ func NewURLChecker(
 	client *http.Client,
 	interval time.Duration,
 	producer kafka.NotificationProducer,
-	tracer *tracing.Tracer,
+	tracer *otelkit.Tracer,
 	concurrencyLimit int,
 ) *URLChecker {
 	if producer == nil {
@@ -83,7 +83,7 @@ func (uc *URLChecker) CheckAllURLs(ctx context.Context) {
 	urls, err := uc.svc.GetAll(ctx)
 	if err != nil {
 		uc.logger.Error("Failed to fetch URLs", slog.Any("error", err))
-		uc.tracer.RecordError(span, err)
+		otelkit.RecordError(span, err)
 		return
 	}
 
@@ -119,7 +119,7 @@ func (uc *URLChecker) CheckAllURLs(ctx context.Context) {
 					slog.String("status", status),
 					slog.Any("error", err),
 				)
-				uc.tracer.RecordError(span, err)
+				otelkit.RecordError(span, err)
 			} else {
 				uc.logger.Info("URL status updated",
 					slog.String("urlID", url.ID),
@@ -127,7 +127,7 @@ func (uc *URLChecker) CheckAllURLs(ctx context.Context) {
 					slog.String("status", status),
 				)
 
-				if status == UnHealthy {
+				if status == StatusDown {
 					notification := model.Notification{
 						UrlID:     url.ID,
 						Type:      "url_unhealthy",
@@ -140,7 +140,7 @@ func (uc *URLChecker) CheckAllURLs(ctx context.Context) {
 						uc.logger.Error("Failed to publish notification",
 							slog.String("url_id", url.ID),
 							slog.Any("error", err))
-						uc.tracer.RecordError(span, err)
+						otelkit.RecordError(span, err)
 					}
 				}
 			}
@@ -159,7 +159,7 @@ func (uc *URLChecker) ping(parentCtx context.Context, target string) string {
 	if err != nil {
 		uc.logger.Warn("Failed to create HTTP request", slog.String("address", target), slog.Any("error", err))
 		metrics.URLCheckStatus.WithLabelValues(model.StatusDown).Inc()
-		return UnHealthy
+		return StatusDown
 	}
 
 	start := time.Now()
@@ -170,7 +170,7 @@ func (uc *URLChecker) ping(parentCtx context.Context, target string) string {
 		uc.logger.Warn("HTTP request failed", slog.String("address", target), slog.Any("error", err))
 		metrics.URLCheckStatus.WithLabelValues(model.StatusDown).Inc()
 		metrics.URLCheckDuration.WithLabelValues(model.StatusDown).Observe(duration)
-		return UnHealthy
+		return StatusDown
 	}
 	defer resp.Body.Close()
 
@@ -181,10 +181,10 @@ func (uc *URLChecker) ping(parentCtx context.Context, target string) string {
 		)
 		metrics.URLCheckStatus.WithLabelValues(model.StatusDown).Inc()
 		metrics.URLCheckDuration.WithLabelValues(model.StatusDown).Observe(duration)
-		return UnHealthy
+		return StatusDown
 	}
 
 	metrics.URLCheckStatus.WithLabelValues(model.StatusUP).Inc()
 	metrics.URLCheckDuration.WithLabelValues(model.StatusUP).Observe(duration)
-	return Healthy
+	return StatusUP
 }

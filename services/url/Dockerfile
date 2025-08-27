@@ -10,9 +10,6 @@ WORKDIR /app
 # Copy go.mod and go.sum to cache dependencies
 COPY services/url/go.mod services/url/go.sum ./
 
-# Copy pkg directory for local dependencies
-COPY pkg/ ../pkg/
-
 # Copy all source code
 COPY services/url/ .
 

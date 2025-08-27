@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/samims/otelkit"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/samims/hcaas/services/auth/internal/model"
 
@@ -18,27 +20,34 @@ type UserStorage interface {
 }
 
 type userStorage struct {
-	db *pgxpool.Pool
+	db     *pgxpool.Pool
+	tracer *otelkit.Tracer
 }
 
-func NewUserStorage(dbPool *pgxpool.Pool) UserStorage {
-	return &userStorage{db: dbPool}
+func NewUserStorage(dbPool *pgxpool.Pool, tracer *otelkit.Tracer) UserStorage {
+	return &userStorage{db: dbPool, tracer: tracer}
 }
 
 func (s *userStorage) CreateUser(ctx context.Context, email, hashedPass string) (*model.User, error) {
+	ctx, span := s.tracer.StartClientSpan(ctx, "userStorage.CreateUser")
+	defer span.End()
+
 	id := uuid.New().String()
 	now := time.Now()
 	query := `
 		INSERT INTO users (id, email, password, created_at)
 		VALUES ($1, $2, $3, $4)
 	`
+	span.SetAttributes(attribute.String("user.email", email))
 
 	_, err := s.db.Exec(ctx, query, id, email, hashedPass, now)
 
 	if err != nil {
+		span.RecordError(err)
 		return nil, err
 	}
 
+	span.SetAttributes(attribute.String("user.id", id))
 	return &model.User{
 		ID:        id,
 		Email:     email,
@@ -48,6 +57,11 @@ func (s *userStorage) CreateUser(ctx context.Context, email, hashedPass string) 
 }
 
 func (s *userStorage) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
+	ctx, span := s.tracer.StartClientSpan(ctx, "userStorage.GetUserByEmail")
+	defer span.End()
+
+	span.SetAttributes(attribute.String("user.email", email))
+
 	query := `
 		SELECT id, email, password, created_at
 		FROM users
@@ -57,11 +71,21 @@ func (s *userStorage) GetUserByEmail(ctx context.Context, email string) (*model.
 
 	var user model.User
 	if err := row.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt); err != nil {
+		span.RecordError(err)
 		return nil, err
 	}
+
+	span.SetAttributes(attribute.String("user.id", user.ID))
 	return &user, nil
 }
 
 func (s *userStorage) Ping(ctx context.Context) error {
-	return s.db.Ping(ctx)
+	ctx, span := s.tracer.StartClientSpan(ctx, "userStorage.Ping")
+	defer span.End()
+
+	err := s.db.Ping(ctx)
+	if err != nil {
+		span.RecordError(err)
+	}
+	return err
 }

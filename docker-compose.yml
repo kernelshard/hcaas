@@ -14,10 +14,10 @@ services:
     env_file:
       - ./services/url/.env
     environment:
-      DATABASE_URL: postgres://hcaas_user:hcaas_pass@hcaas_db:5432/hcaas_db
+      # DATABASE_URL: postgres://hcaas_user:hcaas_pass@hcaas_db:5432/hcaas_db
       ENV: production
       AUTH_SVC_URL: http://hcaas_auth:8081/
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://hcaas_jaeger_all_in_one:4317
+      # OTEL_EXPORTER_OTLP_ENDPOINT: http://hcaas_jaeger_all_in_one:4317
       OTEL_SERVICE_NAME: hcaas_web_service
     volumes:
       - ./services/url/.env:/.env
@@ -33,10 +33,11 @@ services:
       - ./services/auth/.env
     ports:
       - "8081:8081"
+    restart: unless-stopped
     depends_on:
       - hcaas_auth_db
     environment:
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://hcaas_jaeger_all_in_one:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: hcaas_jaeger_all_in_one:4317
       OTEL_SERVICE_NAME: hcaas_auth_service
     networks:
       - hcaas_backend_network
@@ -52,11 +53,12 @@ services:
         condition: service_healthy
       hcaas_jaeger_all_in_one:
         condition: service_started
+    restart: unless-stopped
     env_file:
       - ./services/notification/.env
     environment:
       DB_URL: postgres://hcaas_notification_user:hcaas_notification_pass@hcaas_notification_db:5432/hcaas_notification_db?sslmode=disable
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://hcaas_jaeger_all_in_one:4317
+      # OTEL_EXPORTER_OTLP_ENDPOINT: http://hcaas_jaeger_all_in_one:4317
       OTEL_SERVICE_NAME: hcaas_notification_service
     ports:
       - "8082:8082"
@@ -102,6 +104,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: user
       GF_SECURITY_ADMIN_PASSWORD: pass#1234
+      GF_LOG_LEVEL: "warn"
     networks:
       - hcaas_backend_network
 
@@ -175,6 +178,8 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://hcaas_kafka:9092
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG4J_ROOT_LOGLEVEL: "WARN"
+      KAFKA_LOG4J_LOGGERS: "kafka.controller=WARN,kafka.producer=WARN,kafka.consumer=WARN"
     healthcheck:
       test: ["CMD-SHELL", "nc -z hcaas_kafka 9092 || exit 1"]
       interval: 10s

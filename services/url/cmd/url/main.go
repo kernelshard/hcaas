@@ -14,8 +14,8 @@ import (
 	"github.com/IBM/sarama"
 	"github.com/joho/godotenv"
 
-	"github.com/samims/hcaas/pkg/tracing"
 	"github.com/samims/hcaas/services/url/internal/checker"
+	"github.com/samims/hcaas/services/url/internal/config"
 	"github.com/samims/hcaas/services/url/internal/handler"
 	"github.com/samims/hcaas/services/url/internal/kafka"
 	"github.com/samims/hcaas/services/url/internal/logger"
@@ -23,6 +23,7 @@ import (
 	"github.com/samims/hcaas/services/url/internal/router"
 	"github.com/samims/hcaas/services/url/internal/service"
 	"github.com/samims/hcaas/services/url/internal/storage"
+	"github.com/samims/otelkit"
 )
 
 const (
@@ -46,26 +47,43 @@ func main() {
 		l.Error("Error loading .env file", "err", err)
 	}
 
-	// Create a new tracing configuration from environment variables.
-	tracerCfg := tracing.NewConfig()
-	if err := tracerCfg.Validate(); err != nil {
-		l.Error("Invalid tracing config", slog.Any("error", err))
-		os.Exit(1)
-	}
-
-	// ---- OpenTelemetry Tracing Setup ----
-	tracerShutdown, err := tracing.SetupTracing(ctx, l)
+	// Load configuration from environment variables
+	cfg, err := config.LoadConfig()
 	if err != nil {
-		l.Error("Failed to initialize OpenTelemetry TracerProvider", slog.Any("error", err))
+		l.Error("Failed to load configuration", "err", err)
 		os.Exit(1)
 	}
 
-	// IMPORTANT: Defer the tracer shutdown function to ensure all spans are flushed
-	// before the application exits.
-	defer tracerShutdown(context.Background())
-	// --- End OpenTelemetry Tracing Setup ---
+	// Setup OpenTelemetry tracing with custom provider configuration
+	tracingConfig := otelkit.NewProviderConfig(serviceName, "v1.0.0").
+		WithOTLPExporter(cfg.OTLPConfig.Endpoint, cfg.OTLPConfig.Protocol, cfg.OTLPConfig.Insecure).
+		WithSampling("probabilistic", 0.1).                        // 10% sampling rate
+		WithBatchOptions(2*time.Second, 10*time.Second, 512, 2048) // Optimized batch settings
 
-	dbPool, err := storage.NewPostgresPool(ctx)
+	provider, err := otelkit.NewProvider(ctx, tracingConfig)
+	if err != nil {
+		l.Error("Failed to initialize OpenTelemetry tracing provider",
+			slog.String("error", err.Error()),
+			slog.String("service", serviceName))
+		os.Exit(1)
+	}
+
+	// Graceful shutdown with error handling
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := provider.Shutdown(shutdownCtx); err != nil {
+			l.Error("Failed to gracefully shutdown tracing provider",
+				slog.String("error", err.Error()))
+		} else {
+			l.Info("Tracing provider shutdown completed successfully")
+		}
+	}()
+
+	tracer := otelkit.New(serviceName)
+
+	dbPool, err := storage.NewPostgresPool(ctx, cfg.DBConfig.URL)
 	if err != nil {
 		l.Error("Failed to connect to database", "err", err)
 		os.Exit(1)
@@ -73,28 +91,18 @@ func main() {
 	defer dbPool.Close()
 
 	// Initialize layers
-	tracer := tracing.NewTracer(tracing.GetTracer(serviceName))
 	ps := storage.NewPostgresStorage(dbPool, tracer)
 	urlSvc := service.NewURLService(ps, l, tracer)
 	healthSvc := service.NewHealthService(ps, l)
 
 	// Kafka producers setup
-	// TODO: will move to another place
-	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
-	kafkaNotifTopic := os.Getenv("KAFKA_NOTIF_TOPIC")
-	if kafkaBrokers == "" || kafkaNotifTopic == "" {
-		l.Error("KAFKA_BROKERS or KAFKA_TOPIC not set")
-		os.Exit(1)
-	}
-
 	saramaConfig := sarama.NewConfig()
 	saramaConfig.Producer.RequiredAcks = sarama.WaitForAll // Acks from all replicas
 	saramaConfig.Producer.Retry.Max = 5
 	saramaConfig.Producer.Return.Successes = true
 	saramaConfig.ClientID = "url-service-producer"
 
-	kafkaAsyncProducer, err := sarama.NewAsyncProducer([]string{kafkaBrokers}, saramaConfig)
-
+	kafkaAsyncProducer, err := sarama.NewAsyncProducer(cfg.KafkaConfig.Brokers, saramaConfig)
 	if err != nil {
 		l.Error("Failed to create sarama producer", slog.Any("error", err))
 		os.Exit(1)
@@ -103,11 +111,10 @@ func main() {
 	var wg sync.WaitGroup
 
 	l.Info("Before NewProducer")
-	notificationProducer := kafka.NewProducer(kafkaAsyncProducer, kafkaNotifTopic, l, &wg, tracer)
+	notificationProducer := kafka.NewProducer(kafkaAsyncProducer, cfg.KafkaConfig.NotifTopic, l, &wg, tracer)
 	l.Info("After NewProducer")
 
 	l.Info("Calling notificationProducer.Start()")
-
 	notificationProducer.Start(ctx)
 
 	httpClient := &http.Client{Timeout: 5 * time.Second}
@@ -115,25 +122,23 @@ func main() {
 	chkr := checker.NewURLChecker(urlSvc, l, httpClient, 1*time.Minute, notificationProducer, tracer, concurrencyLimit)
 	go chkr.Start(ctx)
 
-	urlHandler := handler.NewURLHandler(urlSvc, l)
+	urlHandler := handler.NewURLHandler(urlSvc, l, tracer)
 	healthHandler := handler.NewHealthHandler(healthSvc, l)
 
 	// Setup router and server
-	port := ":8080"
-
 	r := router.NewRouter(urlHandler, healthHandler, l, serviceName)
 	// Apply OpenTelemetry HTTP server middleware to the router.
 	// This will automatically create spans for incoming requests and propagate context.
 	// Pass the service name to the middleware
 
 	server := &http.Server{
-		Addr:    port,
+		Addr:    ":" + cfg.AppCfg.Port,
 		Handler: r,
 	}
 
 	// Start server in goroutine
 	go func() {
-		l.Info("Server started", "addr", port)
+		l.Info("Server started", "addr", server.Addr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			l.Error("Failed to start server", "err", err)
 			os.Exit(1)

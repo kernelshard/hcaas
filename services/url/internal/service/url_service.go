@@ -11,10 +11,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
-	"github.com/samims/hcaas/pkg/tracing"
 	appErr "github.com/samims/hcaas/services/url/internal/errors"
 	"github.com/samims/hcaas/services/url/internal/model"
 	"github.com/samims/hcaas/services/url/internal/storage"
+	"github.com/samims/otelkit"
 )
 
 func getUserIDFromContext(ctx context.Context) (string, error) {
@@ -51,10 +51,10 @@ type URLService interface {
 type urlService struct {
 	store  storage.Storage
 	logger *slog.Logger
-	tracer *tracing.Tracer
+	tracer *otelkit.Tracer
 }
 
-func NewURLService(store storage.Storage, logger *slog.Logger, tracer *tracing.Tracer) URLService {
+func NewURLService(store storage.Storage, logger *slog.Logger, tracer *otelkit.Tracer) URLService {
 	l := logger.With("layer", "service", "component", "urlService")
 	return &urlService{
 		store:  store,
@@ -71,7 +71,7 @@ func (s *urlService) GetAllByUserID(ctx context.Context) ([]model.URL, error) {
 	s.logger.Info("GetAllByUserID called")
 	userID, err := getUserIDFromContext(ctx)
 	if err != nil {
-		s.tracer.RecordError(span, err)
+		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (s *urlService) GetAllByUserID(ctx context.Context) ([]model.URL, error) {
 		s.logger.Error("failed to fetch URLs",
 			slog.String("error", err.Error()),
 			slog.String("user_id", userID))
-		s.tracer.RecordError(span, err)
+		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, err.Error())
 		return nil, appErr.NewInternal("failed to fetch URLs: %v", err)
 	}
@@ -100,7 +100,7 @@ func (s *urlService) GetAll(ctx context.Context) ([]model.URL, error) {
 	urls, err := s.store.FindAll(ctx)
 	if err != nil {
 		s.logger.Error("failed to fetch URLs", slog.String("error", err.Error()))
-		s.tracer.RecordError(span, err)
+		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, err.Error())
 		return nil, appErr.NewInternal("failed to fetch URLs: %v", err)
 	}
@@ -120,7 +120,7 @@ func (s *urlService) GetByID(ctx context.Context, id string) (*model.URL, error)
 
 	userID, err := getUserIDFromContext(ctx)
 	if err != nil {
-		s.tracer.RecordError(span, err)
+		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (s *urlService) GetByID(ctx context.Context, id string) (*model.URL, error)
 	if err != nil {
 		if errors.Is(err, appErr.ErrNotFound) {
 			s.logger.Warn("URL not found", slog.String("id", id), slog.String("user_id", userID))
-			s.tracer.RecordError(span, err)
+			otelkit.RecordError(span, err)
 			span.SetStatus(codes.Error, err.Error())
 			return nil, appErr.NewNotFound(fmt.Sprintf("URL with ID %s not found", id))
 		}
@@ -141,7 +141,7 @@ func (s *urlService) GetByID(ctx context.Context, id string) (*model.URL, error)
 			slog.String("user_id", userID),
 			slog.String("error", err.Error()))
 
-		s.tracer.RecordError(span, err)
+		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, err.Error())
 		return nil, appErr.NewInternal("failed to fetch URL by ID: %v", err)
 	}
@@ -153,7 +153,7 @@ func (s *urlService) GetByID(ctx context.Context, id string) (*model.URL, error)
 			slog.String("requested_by", userID),
 			slog.String("owned_by", url.UserID))
 		ownershipErr := fmt.Errorf("URL access denied %s for user %s", id, userID)
-		s.tracer.RecordError(span, ownershipErr)
+		otelkit.RecordError(span, ownershipErr)
 		return nil, appErr.NewNotFound(fmt.Sprintf("URL with ID %s not found", id))
 	}
 

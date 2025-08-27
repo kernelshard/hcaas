@@ -6,10 +6,12 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/samims/hcaas/services/notification/internal/model"
 	"github.com/samims/hcaas/services/notification/internal/store"
+	"github.com/samims/otelkit"
 )
 
 // NotificationService defines behavior for sending notifications
@@ -28,6 +30,7 @@ type notificationService struct {
 	workerLimit int
 	interval    time.Duration
 	l           *slog.Logger
+	tracer      *otelkit.Tracer
 }
 
 // NewNotificationService creates a new notification service instance
@@ -37,6 +40,7 @@ func NewNotificationService(
 	workerLimit int,
 	interval time.Duration,
 	logger *slog.Logger,
+	tracer *otelkit.Tracer,
 ) NotificationService {
 	return &notificationService{
 		store:       store,
@@ -44,13 +48,19 @@ func NewNotificationService(
 		workerLimit: workerLimit,
 		interval:    interval,
 		l:           logger,
+		tracer:      tracer,
 	}
 }
 
 // Send sends the notification
 func (s *notificationService) Send(ctx context.Context, n *model.Notification) error {
+	ctx, span := s.tracer.StartClientSpan(ctx, "notificationService.Send")
+	defer span.End()
+
 	if n == nil {
-		return fmt.Errorf("notification cannot be nil")
+		err := fmt.Errorf("notification cannot be nil")
+		span.RecordError(err)
+		return err
 	}
 	// Simulate sending notification service
 	s.l.Info("Notification service send called with url ", slog.String("url_id", n.UrlId))
@@ -58,9 +68,13 @@ func (s *notificationService) Send(ctx context.Context, n *model.Notification) e
 	n.CreatedAt = time.Now()
 	n.UpdatedAt = n.CreatedAt
 
+	span.SetAttributes(attribute.String("notification.url_id", n.UrlId))
+	span.SetAttributes(attribute.String("notification.status", string(n.Status)))
+
 	s.l.Info("Queuing new notification for processing", slog.String("url_id", n.UrlId))
 
 	if err := s.store.Save(ctx, n); err != nil {
+		span.RecordError(err)
 		s.l.Error("Failed to save notification to store", slog.String("url_id", n.UrlId), slog.Any("error", err))
 		return err
 	}
@@ -127,16 +141,27 @@ func (s *notificationService) processBatch(ctx context.Context) error {
 
 // processNotification handles delivery and updates status
 func (s *notificationService) processNotification(ctx context.Context, n *model.Notification) error {
+	ctx, span := s.tracer.StartClientSpan(ctx, "notificationService.processNotification")
+	defer span.End()
+
 	if n == nil {
-		return fmt.Errorf("notification cannot be nil")
+		err := fmt.Errorf("notification cannot be nil")
+		span.RecordError(err)
+		return err
 	}
+
+	span.SetAttributes(attribute.Int("notification.id", n.ID))
+	span.SetAttributes(attribute.String("notification.url_id", n.UrlId))
+
 	start := time.Now()
 	s.l.InfoContext(ctx, "Attempting to deliver notification", slog.Int("id", n.ID), slog.String("url_id", n.UrlId))
 
 	if err := s.delivery.Deliver(ctx, n); err != nil {
+		span.RecordError(err)
 		s.l.ErrorContext(ctx, "Notification delivery failed", slog.Int("id", n.ID), slog.String("url_id", n.UrlId), slog.Any("error", err))
 		updateErr := s.store.UpdateStatus(ctx, n.ID, model.StatusFailed)
 		if updateErr != nil {
+			span.RecordError(updateErr)
 			s.l.ErrorContext(ctx, "Failed to update status to failed after delivery error", slog.Int("id", n.ID), slog.Any("delivery_error", err), slog.Any("update_error", updateErr))
 			return fmt.Errorf("notification delivery failed: %w; status update to 'failed' also failed: %w", err, updateErr)
 		}
@@ -145,9 +170,12 @@ func (s *notificationService) processNotification(ctx context.Context, n *model.
 
 	duration := time.Since(start)
 	s.l.InfoContext(ctx, "Notification delivery succeeded", slog.Int("id", n.ID), slog.String("url_id", n.UrlId), slog.Duration("duration", duration))
+	span.SetAttributes(attribute.String("notification.status", string(model.StatusSent)))
+	span.SetAttributes(attribute.Int64("notification.duration_ms", duration.Milliseconds()))
 
 	updateErr := s.store.UpdateStatus(ctx, n.ID, model.StatusSent)
 	if updateErr != nil {
+		span.RecordError(updateErr)
 		s.l.Error("Failed to update status to sent after successful delivery", slog.Int("id", n.ID), slog.Any("error", updateErr))
 		return updateErr
 	}
