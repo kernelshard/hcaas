@@ -24,7 +24,7 @@ type AuthService interface {
 	Register(ctx context.Context, email, password string) (*model.User, error)
 	Login(ctx context.Context, email, password string) (*model.User, string, error)
 	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
-	ValidateToken(token string) (string, string, error)
+	ValidateToken(ctx context.Context, token string) (string, string, error)
 }
 
 // authService is the implementation of the AuthService interface
@@ -64,13 +64,13 @@ func (s *authService) Register(ctx context.Context, email, password string) (*mo
 	span.SetAttributes(
 		attribute.String("user.email", email),
 		attribute.String("operation", "user_registration"),
-		attribute.String("service.component", "auth_service"),
 	)
 
 	if !regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`).MatchString(email) {
 		s.logger.Error("Invalid email format", slog.String("email", email))
 		span.SetStatus(codes.Error, "Invalid email format")
 		span.SetAttributes(attribute.String("error.type", "invalid_email_format"))
+
 		return nil, appErr.ErrInvalidEmail
 	}
 
@@ -113,6 +113,7 @@ func (s *authService) Register(ctx context.Context, email, password string) (*mo
 		return nil, appErr.ErrInvalidInput
 	}
 
+	// Hash the password
 	hashedPass, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		s.logger.Error("Password hashing failed", slog.Any("error", err))
@@ -122,18 +123,25 @@ func (s *authService) Register(ctx context.Context, email, password string) (*mo
 		return nil, appErr.ErrInternal
 	}
 
+	// Create the user from the provided email and hashed password
 	createdUser, err := s.store.CreateUser(ctx, email, string(hashedPass))
 	if err != nil {
+		// Handle user creation errors
+		// Check for conflict errors when user already exists
 		if errors.Is(err, appErr.ErrConflict) {
 			s.logger.Warn("User already exists", slog.String("email", email))
+			otelkit.RecordError(span, err)
 			span.SetStatus(codes.Error, "User already exists")
 			span.SetAttributes(attribute.String("error.type", "user_already_exists"))
 			return nil, appErr.ErrConflict
 		}
+
+		// Log and record the error
 		s.logger.Error("User creation failed", slog.Any("error", err))
 		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, "User creation failed")
 		span.SetAttributes(attribute.String("error.type", "user_creation_error"))
+
 		return nil, appErr.ErrInternal
 	}
 
@@ -144,9 +152,11 @@ func (s *authService) Register(ctx context.Context, email, password string) (*mo
 	)
 	span.AddEvent("user.registration.completed")
 	span.AddEvent("operation.completed")
+
 	return createdUser, nil
 }
 
+// Login logs in a user by email and password & generates a token
 func (s *authService) Login(ctx context.Context, email, password string) (*model.User, string, error) {
 	ctx, span := s.tracer.StartServerSpan(ctx, "authService.Login")
 	defer span.End()
@@ -162,37 +172,45 @@ func (s *authService) Login(ctx context.Context, email, password string) (*model
 	if lockoutUntil, locked := s.lockoutTime[email]; locked {
 		if time.Now().Before(lockoutUntil) {
 			remainingLockout := time.Until(lockoutUntil)
+
 			s.logger.Warn("User account locked due to too many failed login attempts",
 				slog.String("email", email),
 				slog.Duration("remaining_lockout", remainingLockout))
-			otelkit.RecordError(span, errors.New("too many attempts"))
+			otelkit.RecordError(span, appErr.ErrTooManyAttempts)
 			span.SetStatus(codes.Error, "Account locked due to too many failed attempts")
 			span.SetAttributes(
 				attribute.String("error.type", "account_locked"),
 				attribute.Int64("lockout.remaining_seconds", int64(remainingLockout.Seconds())),
 			)
+
 			return nil, "", appErr.ErrTooManyAttempts
 		} else {
-			// Lockout expired, reset
+			// Lockout period has expired, reset attempts
 			delete(s.lockoutTime, email)
 			s.loginAttempts[email] = 0
 			span.AddEvent("lockout_expired_reset")
 		}
 	}
 
+	// Fetch the user by email to validate credentials
 	user, err := s.store.GetUserByEmail(ctx, email)
 	if err != nil {
+		// when there is no user found by email
 		if errors.Is(err, pgx.ErrNoRows) {
 			s.logger.Warn("User not found", slog.String("email", email))
+
 			otelkit.RecordError(span, err)
 			span.SetStatus(codes.Error, "User not found")
 			span.SetAttributes(attribute.String("error.type", "user_not_found"))
+
 			return nil, "", appErr.ErrUnauthorized
 		}
+		// for other database errors
 		s.logger.Error("Failed to fetch user by email", slog.String("email", email), slog.Any("error", err))
 		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, "Failed to fetch user by email")
 		span.SetAttributes(attribute.String("error.type", "database_error"))
+
 		return nil, "", appErr.ErrInternal
 	}
 	s.logger.Info("Log in user found", slog.String("email", email), slog.String("user.id", user.ID))
@@ -203,6 +221,7 @@ func (s *authService) Login(ctx context.Context, email, password string) (*model
 
 	// Compare the provided password with the stored hashed password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+		// Password mismatch
 		s.loginAttempts[email]++
 		currentAttempts := s.loginAttempts[email]
 
@@ -210,7 +229,7 @@ func (s *authService) Login(ctx context.Context, email, password string) (*model
 			attribute.Int("login.attempts", currentAttempts),
 			attribute.Int("login.max_attempts", s.maxAttempts),
 		)
-
+		// Check if the user has reached the maximum number of login attempts
 		if currentAttempts >= s.maxAttempts {
 			s.lockoutTime[email] = time.Now().Add(s.lockoutDuration)
 			s.logger.Warn("User account locked due to too many failed login attempts",
@@ -223,14 +242,15 @@ func (s *authService) Login(ctx context.Context, email, password string) (*model
 			)
 			return nil, "", appErr.ErrTooManyAttempts
 		}
-		s.logger.Warn("Invalid password",
-			slog.String("email", email),
-			slog.Int("attempt", currentAttempts))
+
+		s.logger.Warn("Invalid password", slog.String("email", email), slog.Int("attempt", currentAttempts))
+
 		span.SetStatus(codes.Error, "Invalid password")
 		span.SetAttributes(
 			attribute.String("error.type", "invalid_password"),
 			attribute.Int("login.failed_attempts", currentAttempts),
 		)
+
 		return nil, "", appErr.ErrUnauthorized
 	}
 
@@ -238,12 +258,16 @@ func (s *authService) Login(ctx context.Context, email, password string) (*model
 	s.loginAttempts[email] = 0
 	span.AddEvent("login_attempts_reset")
 
-	token, err := s.tokenSvc.GenerateToken(user)
+	// Generate a token for the user
+	token, err := s.tokenSvc.GenerateToken(ctx, user)
 	if err != nil {
+		// Token generation failed
 		s.logger.Error("Token generation failed", slog.String("email", email), slog.Any("error", err))
+
 		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, "Token generation failed")
 		span.SetAttributes(attribute.String("error.type", "token_generation_error"))
+
 		return nil, "", appErr.ErrTokenGeneration
 	}
 
@@ -253,9 +277,11 @@ func (s *authService) Login(ctx context.Context, email, password string) (*model
 		attribute.String("result", "success"),
 	)
 	span.AddEvent("operation.completed")
+
 	return user, token, nil
 }
 
+// GetUserByEmail gets a user by email and returns the user object
 func (s *authService) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
 	ctx, span := s.tracer.StartServerSpan(ctx, "authService.GetUserByEmail")
 	defer span.End()
@@ -266,23 +292,29 @@ func (s *authService) GetUserByEmail(ctx context.Context, email string) (*model.
 		attribute.String("service.component", "auth_service"),
 	)
 
+	// Fetch the user by email from the storage
 	user, err := s.store.GetUserByEmail(ctx, email)
 	if err != nil {
+		// User not found
 		if errors.Is(err, pgx.ErrNoRows) {
 			s.logger.Warn("User not found by email", slog.String("email", email))
 			otelkit.RecordError(span, err)
 			span.SetStatus(codes.Error, "User not found by email")
 			span.SetAttributes(attribute.String("error.type", "user_not_found"))
+
 			return nil, appErr.ErrNotFound
 		}
+		// Failed to fetch user by email
 		s.logger.Error(
 			"Failed to fetch user by email",
 			slog.String("email", email),
 			slog.String("error", err.Error()),
 		)
+
 		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, "Failed to fetch user by email")
 		span.SetAttributes(attribute.String("error.type", "database_error"))
+
 		return nil, appErr.ErrInternal
 	}
 
@@ -292,11 +324,13 @@ func (s *authService) GetUserByEmail(ctx context.Context, email string) (*model.
 		attribute.String("result", "success"),
 	)
 	span.AddEvent("operation.completed")
+
 	return user, nil
 }
 
-func (s *authService) ValidateToken(token string) (string, string, error) {
-	_, span := s.tracer.StartServerSpan(context.Background(), "authService.ValidateToken")
+// ValidateToken validates a token and returns the user ID and email from the token
+func (s *authService) ValidateToken(ctx context.Context, token string) (string, string, error) {
+	_, span := s.tracer.StartServerSpan(ctx, "authService.ValidateToken")
 	defer span.End()
 
 	s.logger.Info("ValidateToken called")
@@ -306,15 +340,19 @@ func (s *authService) ValidateToken(token string) (string, string, error) {
 		attribute.String("service.component", "auth_service"),
 	)
 
-	userID, email, err := s.tokenSvc.ValidateToken(token)
+	// Validate the token
+	userID, email, err := s.tokenSvc.ValidateToken(ctx, token)
 	if err != nil {
+		// Token validation failed
 		s.logger.Info("Token validation failed", slog.String("error", err.Error()))
 		otelkit.RecordError(span, err)
 		span.SetStatus(codes.Error, "Token validation failed")
 		span.SetAttributes(attribute.String("error.type", "token_validation_error"))
+
 		return "", "", err
 	}
 
+	// Token validation succeeded
 	s.logger.Info("Token validation succeeded", slog.String("user.id", userID), slog.String("user.email", email))
 	span.SetAttributes(
 		attribute.String("user.id", userID),
@@ -322,6 +360,7 @@ func (s *authService) ValidateToken(token string) (string, string, error) {
 		attribute.String("result", "success"),
 	)
 	span.AddEvent("operation.completed")
+
 	return userID, email, nil
 
 }

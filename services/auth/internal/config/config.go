@@ -23,6 +23,7 @@ type OTLPConfig struct {
 	Insecure bool
 }
 
+// AppConfig holds the application configuration.
 type AppConfig struct {
 	Port string
 }
@@ -67,6 +68,7 @@ func LoadConfig() (*Config, error) {
 		return def, nil
 	}
 
+	// getString gets a string from the environment variables.
 	getString := func(key, def string) string {
 		if v := os.Getenv(key); v != "" {
 			return v

@@ -23,6 +23,7 @@ type AuthHandler struct {
 	tracer  *otelkit.Tracer
 }
 
+// NewAuthHandler creates a new instance of AuthHandler
 func NewAuthHandler(authSvc service.AuthService, logger *slog.Logger, tracer *otelkit.Tracer) *AuthHandler {
 	return &AuthHandler{authSvc: authSvc, logger: logger, tracer: tracer}
 }
@@ -51,6 +52,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid payload")
 		return
 	}
+
 	user, err := h.authSvc.Register(ctx, req.Email, req.Password)
 	if err != nil {
 		otelkit.RecordError(span, err)
@@ -130,7 +132,7 @@ func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := strings.TrimPrefix(authHeader, "Bearer ")
-	userID, email, err := h.authSvc.ValidateToken(token)
+	userID, email, err := h.authSvc.ValidateToken(r.Context(), token)
 	if err != nil {
 		otelkit.RecordError(span, err)
 		respondError(w, http.StatusUnauthorized, "invalid token")

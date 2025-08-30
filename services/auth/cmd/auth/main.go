@@ -79,7 +79,7 @@ func main() {
 
 	userStorage := storage.NewUserStorage(dbPool, tracer)
 
-	tokenSvc := service.NewJWTService(cfg.SecretKey, cfg.AuthExpiry, l)
+	tokenSvc := service.NewJWTService(cfg.SecretKey, cfg.AuthExpiry, l, tracer)
 	authSvc := service.NewAuthService(userStorage, l, tokenSvc, tracer)
 	healthSvc := service.NewHealthService(userStorage, l)
 

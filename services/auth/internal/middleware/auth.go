@@ -30,7 +30,7 @@ func AuthMiddleware(tokenService service.TokenService) func(http.Handler) http.H
 			}
 
 			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-			userID, email, err := tokenService.ValidateToken(tokenStr)
+			userID, email, err := tokenService.ValidateToken(r.Context(), tokenStr)
 			if err != nil {
 				http.Error(w, "invalid or expired token", http.StatusUnauthorized)
 				return

@@ -13,21 +13,25 @@ import (
 	"github.com/google/uuid"
 )
 
+// UserStorage interface for user storage
 type UserStorage interface {
 	CreateUser(ctx context.Context, email, hashedPass string) (*model.User, error)
 	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
 	Ping(ctx context.Context) error
 }
 
+// userStorage struct for user storage
 type userStorage struct {
 	db     *pgxpool.Pool
 	tracer *otelkit.Tracer
 }
 
+// NewUserStorage creates a new UserStorage
 func NewUserStorage(dbPool *pgxpool.Pool, tracer *otelkit.Tracer) UserStorage {
 	return &userStorage{db: dbPool, tracer: tracer}
 }
 
+// CreateUser creates a new user
 func (s *userStorage) CreateUser(ctx context.Context, email, hashedPass string) (*model.User, error) {
 	ctx, span := s.tracer.StartClientSpan(ctx, "userStorage.CreateUser")
 	defer span.End()
@@ -62,6 +66,7 @@ func (s *userStorage) CreateUser(ctx context.Context, email, hashedPass string) 
 	}, nil
 }
 
+// GetUserByEmail gets a user by email
 func (s *userStorage) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
 	ctx, span := s.tracer.StartClientSpan(ctx, "userStorage.GetUserByEmail")
 	defer span.End()
@@ -91,6 +96,7 @@ func (s *userStorage) GetUserByEmail(ctx context.Context, email string) (*model.
 	return &user, nil
 }
 
+// Ping checks if the database is connected
 func (s *userStorage) Ping(ctx context.Context) error {
 	ctx, span := s.tracer.StartClientSpan(ctx, "userStorage.Ping")
 	defer span.End()

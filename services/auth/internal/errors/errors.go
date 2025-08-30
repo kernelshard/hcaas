@@ -5,6 +5,7 @@ import "errors"
 var (
 	ErrInvalidEmail    = errors.New("invalid email")
 	ErrInvalidInput    = errors.New("invalid input")
+	ErrInvalidToken    = errors.New("invalid token")
 	ErrConflict        = errors.New("conflict")
 	ErrInternal        = errors.New("internal error")
 	ErrUnauthorized    = errors.New("unauthorized")
