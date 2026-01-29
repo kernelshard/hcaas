@@ -11,9 +11,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
-	appErr "github.com/samims/hcaas/services/url/internal/errors"
-	"github.com/samims/hcaas/services/url/internal/model"
-	"github.com/samims/hcaas/services/url/internal/storage"
+	appErr "github.com/kernelshard/hcaas/services/url/internal/errors"
+	"github.com/kernelshard/hcaas/services/url/internal/model"
+	"github.com/kernelshard/hcaas/services/url/internal/storage"
 	"github.com/samims/otelkit"
 )
 

@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	appErr "github.com/samims/hcaas/services/url/internal/errors"
-	"github.com/samims/hcaas/services/url/internal/model"
+	appErr "github.com/kernelshard/hcaas/services/url/internal/errors"
+	"github.com/kernelshard/hcaas/services/url/internal/model"
 	"github.com/samims/otelkit"
 	"go.opentelemetry.io/otel/attribute"
 )

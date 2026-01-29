@@ -10,8 +10,8 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/samims/hcaas/services/notification/internal/model"
-	"github.com/samims/hcaas/services/notification/internal/store"
+	"github.com/kernelshard/hcaas/services/notification/internal/model"
+	"github.com/kernelshard/hcaas/services/notification/internal/store"
 	"github.com/samims/otelkit"
 )
 

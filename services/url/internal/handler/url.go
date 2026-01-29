@@ -8,9 +8,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/codes"
 
-	"github.com/samims/hcaas/services/url/internal/errors"
-	"github.com/samims/hcaas/services/url/internal/model"
-	"github.com/samims/hcaas/services/url/internal/service"
+	"github.com/kernelshard/hcaas/services/url/internal/errors"
+	"github.com/kernelshard/hcaas/services/url/internal/model"
+	"github.com/kernelshard/hcaas/services/url/internal/service"
 	"github.com/samims/otelkit"
 )
 

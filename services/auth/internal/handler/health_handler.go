@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/samims/hcaas/services/auth/internal/service"
+	"github.com/kernelshard/hcaas/services/auth/internal/service"
 )
 
 type HealthHandler struct {

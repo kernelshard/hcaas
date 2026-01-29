@@ -9,7 +9,7 @@ import (
 	"github.com/samims/otelkit"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/samims/hcaas/services/auth/internal/service"
+	"github.com/kernelshard/hcaas/services/auth/internal/service"
 )
 
 const (

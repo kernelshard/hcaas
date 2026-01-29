@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/samims/hcaas/services/url/internal/metrics"
+	"github.com/kernelshard/hcaas/services/url/internal/metrics"
 )
 
 func MetricsMiddleware(next http.Handler) http.Handler {

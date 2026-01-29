@@ -6,9 +6,9 @@ import (
 	"reflect"
 	"testing"
 
-	appErr "github.com/samims/hcaas/services/auth/internal/errors"
-	"github.com/samims/hcaas/services/auth/internal/model"
-	"github.com/samims/hcaas/services/auth/internal/storage"
+	appErr "github.com/kernelshard/hcaas/services/auth/internal/errors"
+	"github.com/kernelshard/hcaas/services/auth/internal/model"
+	"github.com/kernelshard/hcaas/services/auth/internal/storage"
 
 	"github.com/stretchr/testify/mock"
 )

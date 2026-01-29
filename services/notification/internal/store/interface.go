@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"github.com/samims/hcaas/services/notification/internal/model"
+	"github.com/kernelshard/hcaas/services/notification/internal/model"
 )
 
 // NotificationStorage defines DB operations for notifications

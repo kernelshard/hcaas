@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/samims/hcaas/services/notification/internal/store"
+	"github.com/kernelshard/hcaas/services/notification/internal/store"
 )
 
 // HealthService defines the interface for checking application health

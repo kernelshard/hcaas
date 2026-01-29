@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/samims/hcaas/services/auth/internal/service"
+	"github.com/kernelshard/hcaas/services/auth/internal/service"
 )
 
 type key string

@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/samims/hcaas/services/notification/internal/model"
+	"github.com/kernelshard/hcaas/services/notification/internal/model"
 )
 
 // DeliveryService handles the actual delivery of notification

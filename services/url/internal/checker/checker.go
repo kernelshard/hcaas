@@ -9,10 +9,10 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/samims/hcaas/services/url/internal/kafka"
-	"github.com/samims/hcaas/services/url/internal/metrics"
-	"github.com/samims/hcaas/services/url/internal/model"
-	"github.com/samims/hcaas/services/url/internal/service"
+	"github.com/kernelshard/hcaas/services/url/internal/kafka"
+	"github.com/kernelshard/hcaas/services/url/internal/metrics"
+	"github.com/kernelshard/hcaas/services/url/internal/model"
+	"github.com/kernelshard/hcaas/services/url/internal/service"
 	"github.com/samims/otelkit"
 )
 

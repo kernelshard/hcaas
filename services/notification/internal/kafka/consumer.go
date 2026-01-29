@@ -9,8 +9,8 @@ import (
 
 	"github.com/IBM/sarama"
 
-	"github.com/samims/hcaas/services/notification/internal/model"
-	"github.com/samims/hcaas/services/notification/internal/service"
+	"github.com/kernelshard/hcaas/services/notification/internal/model"
+	"github.com/kernelshard/hcaas/services/notification/internal/service"
 )
 
 // Consumer is responsible for handling Kafka message consumption from a topic using a consumer group.

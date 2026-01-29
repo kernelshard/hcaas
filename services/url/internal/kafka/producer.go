@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 
-	"github.com/samims/hcaas/services/url/internal/model"
+	"github.com/kernelshard/hcaas/services/url/internal/model"
 	"github.com/samims/otelkit"
 )
 

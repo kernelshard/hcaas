@@ -7,7 +7,7 @@ package storage
 import (
 	"context"
 
-	"github.com/samims/hcaas/services/auth/internal/model"
+	"github.com/kernelshard/hcaas/services/auth/internal/model"
 	mock "github.com/stretchr/testify/mock"
 )
 

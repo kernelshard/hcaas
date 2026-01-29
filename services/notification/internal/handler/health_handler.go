@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/samims/hcaas/services/notification/internal/service"
+	"github.com/kernelshard/hcaas/services/notification/internal/service"
 )
 
 type HealthHandler struct {

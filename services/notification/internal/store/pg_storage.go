@@ -8,7 +8,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/samims/hcaas/services/notification/internal/model"
+	"github.com/kernelshard/hcaas/services/notification/internal/model"
 )
 
 type postgresStorage struct {
