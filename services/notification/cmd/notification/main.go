@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/IBM/sarama"
 	_ "github.com/lib/pq"
+	"github.com/samims/otelkit"
 
 	"github.com/samims/hcaas/services/notification/internal/config"
 	"github.com/samims/hcaas/services/notification/internal/handler"
@@ -23,6 +25,8 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
+
 	// Load configuration from environment variables and exit on error.
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -31,6 +35,31 @@ func main() {
 
 	// Initialize the application logger.
 	logr := logger.NewLogger()
+
+	// Setup OpenTelemetry Tracing with custom provider configuration
+	// Use OTLP configuration from environment variables via config
+	tracingConfig := otelkit.NewProviderConfig("notification-service", "v1.0.0").
+		WithOTLPExporter(cfg.OTLPConfig.Endpoint, cfg.OTLPConfig.Protocol, cfg.OTLPConfig.Insecure).
+		WithSampling("probabilistic", 0.1).                        // 10% sampling rate
+		WithBatchOptions(2*time.Second, 10*time.Second, 512, 2048) // Optimized batch settings
+
+	provider, err := otelkit.NewProvider(ctx, tracingConfig)
+	if err != nil {
+		logr.Error("Failed to initialize OpenTelemetry TracerProvider", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	// Graceful shutdown with error handling
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := provider.Shutdown(shutdownCtx); err != nil {
+			logr.Error("Failed to gracefully shutdown tracing provider", slog.String("error", err.Error()))
+		} else {
+			logr.Info("Tracing provider shutdown completed successfully")
+		}
+	}()
 
 	// --- Dependency Injection Setup ---
 
@@ -49,6 +78,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create tracer
+	tracer := otelkit.New("notification-service")
+
 	// Inject the store into the services that need it.
 	healthSvc := service.NewHealthService(dbStore)
 	delivery := service.NewDeliveryService(logr)
@@ -58,6 +90,7 @@ func main() {
 		cfg.WorkerLimit,
 		cfg.WorkerInterval,
 		logr,
+		tracer,
 	)
 
 	// Setup Kafka consumer group with a shared configuration.

@@ -6,30 +6,40 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/otel/codes"
 
-	"github.com/samims/hcaas/pkg/tracing"
 	"github.com/samims/hcaas/services/url/internal/errors"
 	"github.com/samims/hcaas/services/url/internal/model"
 	"github.com/samims/hcaas/services/url/internal/service"
+	"github.com/samims/otelkit"
 )
 
 type URLHandler struct {
 	svc    service.URLService
 	logger *slog.Logger
+	tracer *otelkit.Tracer
 }
 
-func NewURLHandler(s service.URLService, logger *slog.Logger) *URLHandler {
-	return &URLHandler{svc: s, logger: logger}
+// Static string for the span names to avoid magic string
+const (
+	spanGetAll         = "auth.handler.GetAll"
+	spanGetAllByUserID = "auth.handler.GetAllByUserID"
+	spanGetByID        = "auth.handler.GetByID"
+	spanAdd            = "auth.handler.Add"
+	spanUpdateStatus   = "auth.handler.UpdateStatus"
+)
+
+func NewURLHandler(s service.URLService, logger *slog.Logger, tracer *otelkit.Tracer) *URLHandler {
+	return &URLHandler{svc: s, logger: logger, tracer: tracer}
 }
 
 func (h *URLHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	tracer := tracing.NewTracer(tracing.GetTracer("url-handler"))
-	ctx, span := tracer.StartServerSpan(r.Context(), "GetAll")
+	ctx, span := h.tracer.StartServerSpan(r.Context(), spanGetAll)
 	defer span.End()
 
 	urls, err := h.svc.GetAll(ctx)
 	if err != nil {
-		tracer.RecordError(span, err)
+		otelkit.RecordError(span, err)
 		h.logger.Error("GetAll failed", slog.Any("error", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -38,13 +48,13 @@ func (h *URLHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *URLHandler) GetAllByUserID(w http.ResponseWriter, r *http.Request) {
-	tracer := tracing.NewTracer(tracing.GetTracer("url-handler"))
-	ctx, span := tracer.StartServerSpan(r.Context(), "GetAllByUserID")
+	ctx, span := h.tracer.StartServerSpan(r.Context(), spanGetAllByUserID)
 	defer span.End()
 
 	urls, err := h.svc.GetAllByUserID(ctx)
 	if err != nil {
-		tracer.RecordError(span, err)
+		otelkit.RecordError(span, err)
+		span.SetStatus(codes.Error, err.Error())
 		h.logger.Error("GetAllByUserID failed", slog.Any("error", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -54,18 +64,20 @@ func (h *URLHandler) GetAllByUserID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *URLHandler) GetByID(w http.ResponseWriter, r *http.Request) {
-	tracer := tracing.NewTracer(tracing.GetTracer("url-handler"))
-	ctx, span := tracer.StartServerSpan(r.Context(), "GetByID")
+	ctx, span := h.tracer.StartServerSpan(r.Context(), spanGetByID)
 	defer span.End()
 
 	id := chi.URLParam(r, "id")
 	url, err := h.svc.GetByID(ctx, id)
 	if err != nil {
 		if errors.IsNotFound(err) {
+			otelkit.RecordError(span, err)
+			span.SetStatus(codes.Error, err.Error())
 			h.logger.Warn("URL not found", "id", id)
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {
-			tracer.RecordError(span, err)
+			otelkit.RecordError(span, err)
+			span.SetStatus(codes.Error, err.Error())
 			h.logger.Error("GetByID failed", "id", id, "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -75,13 +87,13 @@ func (h *URLHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *URLHandler) Add(w http.ResponseWriter, r *http.Request) {
-	tracer := tracing.NewTracer(tracing.GetTracer("url-handler"))
-	ctx, span := tracer.StartServerSpan(r.Context(), "Add")
+	ctx, span := h.tracer.StartServerSpan(r.Context(), spanAdd)
 	defer span.End()
 
 	var url model.URL
 	if err := json.NewDecoder(r.Body).Decode(&url); err != nil {
-		tracer.RecordError(span, err)
+		otelkit.RecordError(span, err)
+		span.SetStatus(codes.Error, err.Error())
 		h.logger.Warn("Invalid request body for Add")
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
@@ -91,9 +103,12 @@ func (h *URLHandler) Add(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.Add(ctx, url); err != nil {
 		if errors.IsInternal(err) {
 			h.logger.Warn("Duplicate or invalid Add", "url", url, "error", err)
+			otelkit.RecordError(span, err)
+			span.SetStatus(codes.Error, err.Error())
 			http.Error(w, err.Error(), http.StatusConflict)
 		} else {
-			tracer.RecordError(span, err)
+			otelkit.RecordError(span, err)
+			span.SetStatus(codes.Error, err.Error())
 			h.logger.Error("Add failed", "url", url, "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -103,8 +118,7 @@ func (h *URLHandler) Add(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *URLHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
-	tracer := tracing.NewTracer(tracing.GetTracer("url-handler"))
-	ctx, span := tracer.StartServerSpan(r.Context(), "UpdateStatus")
+	ctx, span := h.tracer.StartServerSpan(r.Context(), spanUpdateStatus)
 	defer span.End()
 
 	id := chi.URLParam(r, "id")
@@ -113,22 +127,27 @@ func (h *URLHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		Status string `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		tracer.RecordError(span, err)
 		h.logger.Warn("Invalid request body for UpdateStatus", "id", id)
+		otelkit.RecordError(span, err)
+		span.SetStatus(codes.Error, err.Error())
+
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	if err := h.svc.UpdateStatus(ctx, id, body.Status); err != nil {
 		if errors.IsNotFound(err) {
+			otelkit.RecordError(span, err)
+			span.SetStatus(codes.Error, err.Error())
+
 			h.logger.Warn("URL not found for update", "id", id)
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {
-			tracer.RecordError(span, err)
+			otelkit.RecordError(span, err)
+			span.SetStatus(codes.Error, err.Error())
 			h.logger.Error("UpdateStatus failed", "id", id, "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return
 	}
-	w.WriteHeader(http.StatusOK)
 }

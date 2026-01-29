@@ -6,13 +6,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/samims/otelkit"
 
+	"github.com/samims/hcaas/services/auth/internal/config"
 	"github.com/samims/hcaas/services/auth/internal/handler"
 	"github.com/samims/hcaas/services/auth/internal/logger"
 	customMiddleware "github.com/samims/hcaas/services/auth/internal/middleware"
@@ -24,43 +25,69 @@ import (
 
 func main() {
 	ctx := context.Background()
-
-	_ = godotenv.Load()
-
 	l := logger.NewJSONLogger()
 
-	dbPool, err := storage.NewPostgresPool(ctx)
+	err := godotenv.Load()
+	if err != nil {
+		l.Error("Failed to load environment variables", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	// Load configuration from environment variables
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		l.Error("Failed to load configuration", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	// Setup OpenTelemetry tracing with custom provider configuration
+	// Use OTLP configuration from environment variables via config
+	tracingConfig := otelkit.NewProviderConfig("auth-service", "v1.0.0").
+		WithOTLPExporter(cfg.OTLPConfig.Endpoint, cfg.OTLPConfig.Protocol, cfg.OTLPConfig.Insecure).
+		WithSampling("probabilistic", 0.1).                        // 10% sampling rate
+		WithBatchOptions(2*time.Second, 10*time.Second, 512, 2048) // Optimized batch settings
+
+	provider, err := otelkit.NewProvider(ctx, tracingConfig)
+	if err != nil {
+		l.Error("Failed to initialize OpenTelemetry tracing provider",
+			slog.String("error", err.Error()),
+			slog.String("service", "auth-service"))
+		os.Exit(1)
+	}
+
+	// Graceful shutdown with error handling
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := provider.Shutdown(shutdownCtx); err != nil {
+			l.Error("Failed to gracefully shutdown tracing provider",
+				slog.String("error", err.Error()))
+		} else {
+			l.Info("Tracing provider shutdown completed successfully")
+		}
+	}()
+
+	tracer := otelkit.New("auth-service")
+
+	dbPool, err := storage.NewPostgresPool(ctx, cfg.DBConfig.URL)
 	if err != nil {
 		l.Error("Failed to connect to database", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 	defer dbPool.Close()
 
-	userStorage := storage.NewUserStorage(dbPool)
+	userStorage := storage.NewUserStorage(dbPool, tracer)
 
-	secret := os.Getenv("SECRET_KEY")
-	expiry := os.Getenv("AUTH_EXPIRY")
-	exp, err := strconv.Atoi(expiry)
-	if err != nil {
-		l.Error(
-			"Error converting expiration duration to int ",
-			slog.String("expiry", expiry),
-			slog.String("error", err.Error()),
-		)
-		os.Exit(1)
-	}
-
-	expiryDuration := time.Duration(exp) * time.Hour
-
-	tokenSvc := service.NewJWTService(secret, expiryDuration, l)
-	authSvc := service.NewAuthService(userStorage, l, tokenSvc)
+	tokenSvc := service.NewJWTService(cfg.SecretKey, cfg.AuthExpiry, l, tracer)
+	authSvc := service.NewAuthService(userStorage, l, tokenSvc, tracer)
 	healthSvc := service.NewHealthService(userStorage, l)
 
-	authHandler := handler.NewAuthHandler(authSvc, l)
+	authHandler := handler.NewAuthHandler(authSvc, l, tracer)
 	healthHandler := handler.NewHealthHandler(healthSvc, l)
 
 	r := chi.NewRouter()
-
+	r.Use(otelkit.NewHttpMiddleware(tracer).Middleware)
 	r.Use(customMiddleware.MetricsMiddleware)
 
 	// Middleware

@@ -10,10 +10,12 @@ import (
 
 	"github.com/IBM/sarama"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
 
-	"github.com/samims/hcaas/pkg/tracing"
 	"github.com/samims/hcaas/services/url/internal/model"
+	"github.com/samims/otelkit"
 )
 
 // NotificationProducer defines the interface for Kafka publishing
@@ -29,11 +31,11 @@ type producer struct {
 	log           *slog.Logger
 	wg            *sync.WaitGroup
 	closeOnce     sync.Once
-	tracer        *tracing.Tracer
+	tracer        *otelkit.Tracer
 }
 
 // NewProducer uses DI to inject AsyncProducer, logger, topic, WaitGroup, and tracer.
-func NewProducer(asyncProducer sarama.AsyncProducer, topic string, log *slog.Logger, wg *sync.WaitGroup, tracer *tracing.Tracer) NotificationProducer {
+func NewProducer(asyncProducer sarama.AsyncProducer, topic string, log *slog.Logger, wg *sync.WaitGroup, tracer *otelkit.Tracer) NotificationProducer {
 	if asyncProducer == nil || log == nil || wg == nil || tracer == nil {
 		panic("NewProducer: nil dependencies provided")
 	}
@@ -115,8 +117,8 @@ func (p *producer) Publish(ctx context.Context, notif model.Notification) error 
 		return fmt.Errorf("failed to marshal notification: %w", err)
 	}
 
-	// Inject trace context into headers for propagation to consumer
-	headers := tracing.InjectTraceContext(ctx, nil)
+	// Inject trace context into Kafka headers for propagation to consumer
+	headers := injectTraceContextToKafkaHeaders(ctx)
 
 	msg := &sarama.ProducerMessage{
 		Topic:     p.topic,
@@ -144,6 +146,23 @@ func (p *producer) Publish(ctx context.Context, notif model.Notification) error 
 		span.SetStatus(2, "Publish cancelled by context") // 2 = Error
 		return ctx.Err()
 	}
+}
+
+// injectTraceContextToKafkaHeaders injects the current trace context into Kafka headers
+func injectTraceContextToKafkaHeaders(ctx context.Context) []sarama.RecordHeader {
+	propagator := otel.GetTextMapPropagator()
+	carrier := propagation.MapCarrier{}
+	propagator.Inject(ctx, carrier)
+
+	headers := make([]sarama.RecordHeader, 0, len(carrier))
+	for key, value := range carrier {
+		headers = append(headers, sarama.RecordHeader{
+			Key:   []byte(key),
+			Value: []byte(value),
+		})
+	}
+
+	return headers
 }
 
 // Close shuts down the producer and waits for workers

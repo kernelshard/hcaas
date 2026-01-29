@@ -4,18 +4,16 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 )
 
 // Config holds the application settings loaded from environment variables.
 type Config struct {
-	WorkerLimit    int
-	WorkerInterval time.Duration
-	ConsumerConfig ConsumerConfig
-	DBConfig       DBConfig
-	AppCfg         AppConfig
-	OTLPConfig     OTLPConfig
+	SecretKey  string
+	AuthExpiry time.Duration
+	DBConfig   DBConfig
+	AppCfg     AppConfig
+	OTLPConfig OTLPConfig
 }
 
 // OTLPConfig holds OpenTelemetry tracing configuration.
@@ -25,15 +23,9 @@ type OTLPConfig struct {
 	Insecure bool
 }
 
+// AppConfig holds the application configuration.
 type AppConfig struct {
 	Port string
-}
-
-// ConsumerConfig holds all the Kafka consumer settings.
-type ConsumerConfig struct {
-	KafkaBrokers       []string
-	KafkaTopic         string
-	KafkaConsumerGroup string
 }
 
 // DBConfig holds the Postgres connection settings.
@@ -62,8 +54,13 @@ func LoadConfig() (*Config, error) {
 
 	getDuration := func(key string, def time.Duration) (time.Duration, error) {
 		if v := os.Getenv(key); v != "" {
+			// Try to parse as duration first
 			d, e := time.ParseDuration(v)
 			if e != nil {
+				// If parsing fails, try to parse as integer and assume hours
+				if intVal, err := strconv.Atoi(v); err == nil {
+					return time.Duration(intVal) * time.Hour, nil
+				}
 				return 0, fmt.Errorf("invalid %s: %w", key, e)
 			}
 			return d, nil
@@ -71,6 +68,7 @@ func LoadConfig() (*Config, error) {
 		return def, nil
 	}
 
+	// getString gets a string from the environment variables.
 	getString := func(key, def string) string {
 		if v := os.Getenv(key); v != "" {
 			return v
@@ -78,21 +76,15 @@ func LoadConfig() (*Config, error) {
 		return def
 	}
 
-	// Worker settings
-	if cfg.WorkerLimit, err = getInt("WORKER_LIMIT", 10); err != nil {
-		return nil, err
-	}
-	if cfg.WorkerInterval, err = getDuration("WORKER_INTERVAL", 30*time.Second); err != nil {
-		return nil, err
+	// Auth settings
+	cfg.SecretKey = os.Getenv("SECRET_KEY")
+	if cfg.SecretKey == "" {
+		return nil, fmt.Errorf("SECRET_KEY is required")
 	}
 
-	// Kafka settings
-	cfg.ConsumerConfig.KafkaBrokers = strings.Split(getString("KAFKA_BROKERS", "localhost:9092"), ",")
-	for i, b := range cfg.ConsumerConfig.KafkaBrokers {
-		cfg.ConsumerConfig.KafkaBrokers[i] = strings.TrimSpace(b)
+	if cfg.AuthExpiry, err = getDuration("AUTH_EXPIRY", 24*time.Hour); err != nil {
+		return nil, err
 	}
-	cfg.ConsumerConfig.KafkaTopic = getString("KAFKA_TOPIC", "notifications")
-	cfg.ConsumerConfig.KafkaConsumerGroup = getString("KAFKA_CONSUMER_GROUP", "notification-workers")
 
 	// DB settings
 	cfg.DBConfig.URL = os.Getenv("DB_URL")
@@ -106,7 +98,8 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	port, err := getInt("PORT", 8083)
+	// App settings
+	port, err := getInt("PORT", 8081)
 	if err != nil {
 		return nil, err
 	}

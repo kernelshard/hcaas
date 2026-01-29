@@ -10,9 +10,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/samims/hcaas/pkg/tracing"
 	appErr "github.com/samims/hcaas/services/url/internal/errors"
 	"github.com/samims/hcaas/services/url/internal/model"
+	"github.com/samims/otelkit"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -28,10 +28,10 @@ type Storage interface {
 
 type postgresStorage struct {
 	db     *pgxpool.Pool
-	tracer *tracing.Tracer
+	tracer *otelkit.Tracer
 }
 
-func NewPostgresStorage(pool *pgxpool.Pool, tracer *tracing.Tracer) Storage {
+func NewPostgresStorage(pool *pgxpool.Pool, tracer *otelkit.Tracer) Storage {
 	return &postgresStorage{db: pool, tracer: tracer}
 }
 

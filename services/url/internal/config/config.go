@@ -4,18 +4,15 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 )
 
 // Config holds the application settings loaded from environment variables.
 type Config struct {
-	WorkerLimit    int
-	WorkerInterval time.Duration
-	ConsumerConfig ConsumerConfig
-	DBConfig       DBConfig
-	AppCfg         AppConfig
-	OTLPConfig     OTLPConfig
+	DBConfig    DBConfig
+	AppCfg      AppConfig
+	OTLPConfig  OTLPConfig
+	KafkaConfig KafkaConfig
 }
 
 // OTLPConfig holds OpenTelemetry tracing configuration.
@@ -29,18 +26,18 @@ type AppConfig struct {
 	Port string
 }
 
-// ConsumerConfig holds all the Kafka consumer settings.
-type ConsumerConfig struct {
-	KafkaBrokers       []string
-	KafkaTopic         string
-	KafkaConsumerGroup string
-}
-
 // DBConfig holds the Postgres connection settings.
 type DBConfig struct {
 	URL         string
 	MaxOpenConn int
 	ConnMaxIdle time.Duration
+}
+
+// KafkaConfig holds Kafka configuration
+type KafkaConfig struct {
+	Brokers       []string
+	NotifTopic    string
+	ConsumerGroup string
 }
 
 // LoadConfig reads environment variables and returns a Config or an error.
@@ -78,26 +75,10 @@ func LoadConfig() (*Config, error) {
 		return def
 	}
 
-	// Worker settings
-	if cfg.WorkerLimit, err = getInt("WORKER_LIMIT", 10); err != nil {
-		return nil, err
-	}
-	if cfg.WorkerInterval, err = getDuration("WORKER_INTERVAL", 30*time.Second); err != nil {
-		return nil, err
-	}
-
-	// Kafka settings
-	cfg.ConsumerConfig.KafkaBrokers = strings.Split(getString("KAFKA_BROKERS", "localhost:9092"), ",")
-	for i, b := range cfg.ConsumerConfig.KafkaBrokers {
-		cfg.ConsumerConfig.KafkaBrokers[i] = strings.TrimSpace(b)
-	}
-	cfg.ConsumerConfig.KafkaTopic = getString("KAFKA_TOPIC", "notifications")
-	cfg.ConsumerConfig.KafkaConsumerGroup = getString("KAFKA_CONSUMER_GROUP", "notification-workers")
-
 	// DB settings
-	cfg.DBConfig.URL = os.Getenv("DB_URL")
+	cfg.DBConfig.URL = os.Getenv("DATABASE_URL")
 	if cfg.DBConfig.URL == "" {
-		return nil, fmt.Errorf("DB_URL is required")
+		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
 	if cfg.DBConfig.MaxOpenConn, err = getInt("DB_MAX_OPEN_CONN", 10); err != nil {
 		return nil, err
@@ -106,11 +87,17 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	port, err := getInt("PORT", 8083)
+	// App settings
+	port, err := getInt("PORT", 8080)
 	if err != nil {
 		return nil, err
 	}
 	cfg.AppCfg.Port = strconv.Itoa(port)
+
+	// Kafka settings
+	cfg.KafkaConfig.Brokers = []string{getString("KAFKA_BROKERS", "localhost:9092")}
+	cfg.KafkaConfig.NotifTopic = getString("KAFKA_NOTIF_TOPIC", "notifications")
+	cfg.KafkaConfig.ConsumerGroup = getString("KAFKA_CONSUMER_GROUP", "url-service")
 
 	// OTLP tracing configuration - use standard OpenTelemetry environment variables
 	cfg.OTLPConfig.Endpoint = getString("OTEL_EXPORTER_OTLP_ENDPOINT", "hcaas_jaeger_all_in_one:4317")
