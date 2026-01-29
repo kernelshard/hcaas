@@ -5,7 +5,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/samims/hcaas/services/notification/internal/config"
+	"github.com/kernelshard/hcaas/services/notification/internal/config"
 )
 
 // ConnectPostgres creates and returns a *sql.DB connection

@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/samims/hcaas/services/auth/internal/model"
+	"github.com/kernelshard/hcaas/services/auth/internal/model"
 	"github.com/samims/otelkit"
 )
 

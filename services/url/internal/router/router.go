@@ -12,8 +12,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/samims/hcaas/services/url/internal/handler"
-	customMiddleware "github.com/samims/hcaas/services/url/internal/middleware"
+	"github.com/kernelshard/hcaas/services/url/internal/handler"
+	customMiddleware "github.com/kernelshard/hcaas/services/url/internal/middleware"
 )
 
 func NewRouter(h *handler.URLHandler, healthHandler *handler.HealthHandler, logger *slog.Logger, serviceName string) http.Handler {

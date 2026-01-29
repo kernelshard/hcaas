@@ -1,4 +1,4 @@
-module github.com/samims/hcaas/services/url
+module github.com/kernelshard/hcaas/services/url
 
 go 1.24.4
 
@@ -65,4 +65,4 @@ require (
 	google.golang.org/protobuf v1.36.6 // indirect
 )
 
-replace github.com/samims/hcaas/pkg => ../../pkg
+replace github.com/kernelshard/hcaas/pkg => ../../pkg

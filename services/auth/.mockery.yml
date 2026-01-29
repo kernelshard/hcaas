@@ -12,9 +12,9 @@ require-template-schema-exists: true
 template: testify
 template-schema: "{{.Template}}.schema.json"
 packages:
-  github.com/samims/hcaas/services/auth:
+  github.com/kernelshard/hcaas/services/auth:
     config:
       all: true
-  github.com/samims/hcaas/services/auth/internal/storage:
+  github.com/kernelshard/hcaas/services/auth/internal/storage:
     interfaces:
       UserStorage:

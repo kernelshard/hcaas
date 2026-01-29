@@ -14,9 +14,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/samims/otelkit"
 
-	appErr "github.com/samims/hcaas/services/auth/internal/errors"
-	"github.com/samims/hcaas/services/auth/internal/model"
-	"github.com/samims/hcaas/services/auth/internal/storage"
+	appErr "github.com/kernelshard/hcaas/services/auth/internal/errors"
+	"github.com/kernelshard/hcaas/services/auth/internal/model"
+	"github.com/kernelshard/hcaas/services/auth/internal/storage"
 )
 
 // AuthService defines the interface for authentication-related operations

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/samims/hcaas/services/url/internal/model"
+	"github.com/kernelshard/hcaas/services/url/internal/model"
 )
 
 func AuthMiddleware(authServiceURL string, logger *slog.Logger) func(http.Handler) http.Handler {

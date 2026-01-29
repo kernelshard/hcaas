@@ -13,12 +13,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/samims/otelkit"
 
-	"github.com/samims/hcaas/services/auth/internal/config"
-	"github.com/samims/hcaas/services/auth/internal/handler"
-	"github.com/samims/hcaas/services/auth/internal/logger"
-	customMiddleware "github.com/samims/hcaas/services/auth/internal/middleware"
-	"github.com/samims/hcaas/services/auth/internal/service"
-	"github.com/samims/hcaas/services/auth/internal/storage"
+	"github.com/kernelshard/hcaas/services/auth/internal/config"
+	"github.com/kernelshard/hcaas/services/auth/internal/handler"
+	"github.com/kernelshard/hcaas/services/auth/internal/logger"
+	customMiddleware "github.com/kernelshard/hcaas/services/auth/internal/middleware"
+	"github.com/kernelshard/hcaas/services/auth/internal/service"
+	"github.com/kernelshard/hcaas/services/auth/internal/storage"
 
 	"github.com/joho/godotenv"
 )

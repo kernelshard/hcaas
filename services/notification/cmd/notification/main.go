@@ -16,12 +16,12 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/samims/otelkit"
 
-	"github.com/samims/hcaas/services/notification/internal/config"
-	"github.com/samims/hcaas/services/notification/internal/handler"
-	"github.com/samims/hcaas/services/notification/internal/kafka"
-	"github.com/samims/hcaas/services/notification/internal/logger"
-	"github.com/samims/hcaas/services/notification/internal/service"
-	"github.com/samims/hcaas/services/notification/internal/store"
+	"github.com/kernelshard/hcaas/services/notification/internal/config"
+	"github.com/kernelshard/hcaas/services/notification/internal/handler"
+	"github.com/kernelshard/hcaas/services/notification/internal/kafka"
+	"github.com/kernelshard/hcaas/services/notification/internal/logger"
+	"github.com/kernelshard/hcaas/services/notification/internal/service"
+	"github.com/kernelshard/hcaas/services/notification/internal/store"
 )
 
 func main() {

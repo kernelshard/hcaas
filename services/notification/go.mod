@@ -1,4 +1,4 @@
-module github.com/samims/hcaas/services/notification
+module github.com/kernelshard/hcaas/services/notification
 
 go 1.24.4
 

@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/samims/hcaas/services/auth/internal/storage"
+	"github.com/kernelshard/hcaas/services/auth/internal/storage"
 )
 
 // HealthService defines the interface for health check operations
