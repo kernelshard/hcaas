@@ -39,6 +39,7 @@ services:
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: hcaas_jaeger_all_in_one:4317
       OTEL_SERVICE_NAME: hcaas_auth_service
+      DB_URL: postgres://hcaas_auth_user:hcaas_auth_pass@hcaas_auth_db:5432/hcaas_auth_db?sslmode=disable
     networks:
       - hcaas_backend_network
 
@@ -128,7 +129,7 @@ services:
       - "5433:5432"
     volumes:
       - hcaas_auth_db_data:/var/lib/postgresql/data
-      - ./infra/postgres/auth_init.sql:/docker-entrypoint-initdb.d/init.sql
+
     networks:
       - hcaas_backend_network
 
@@ -147,8 +148,8 @@ services:
       retries: 5
       start_period: 30s
     volumes:
+
       - hcaas_notif_data:/var/lib/postgresql/data
-      - ./infra/postgres/notif.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5434:5432"
     networks:

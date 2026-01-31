@@ -38,6 +38,14 @@ tidy: ## Run go mod tidy for all services
 	cd services/auth && go mod tidy
 	cd services/notification && go mod tidy
 
+# Database Migrations
+
+migrate-auth-up: ## Run up migrations for auth service
+	cd services/auth && go run cmd/migrate/main.go up
+
+migrate-auth-down: ## Run down migrations for auth service
+	cd services/auth && go run cmd/migrate/main.go down
+
 help: ## Show this help message
 	@echo "Usage: make [target]"
 	@echo ""
