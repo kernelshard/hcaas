@@ -50,6 +50,16 @@ migrate-auth-create: ## Create a new migration file. Usage: make migrate-auth-cr
 	@if [ -z "$(name)" ]; then echo "Error: name argument is required"; exit 1; fi
 	cd services/auth && go run cmd/migrate/main.go create $(name)
 
+migrate-notification-up: ## Run up migrations for notification service
+	cd services/notification && go run cmd/migrate/main.go up
+
+migrate-notification-down: ## Run down migrations for notification service
+	cd services/notification && go run cmd/migrate/main.go down
+
+migrate-notification-create: ## Create a new migration file. Usage: make migrate-notification-create name=migration_name
+	@if [ -z "$(name)" ]; then echo "Error: name argument is required"; exit 1; fi
+	cd services/notification && go run cmd/migrate/main.go create $(name)
+
 help: ## Show this help message
 	@echo "Usage: make [target]"
 	@echo ""
