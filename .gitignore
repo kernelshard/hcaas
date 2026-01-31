@@ -33,5 +33,5 @@ go.work.sum
 
 # Postgres data or dumps
 *.sql
+!*/migrations/*.sql
 *.dump
-*go.sum
