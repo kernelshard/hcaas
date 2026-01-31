@@ -16,7 +16,7 @@ type URL struct {
 }
 
 const (
-	StatusUnknown = "unknown"
-	StatusUP      = "up"
-	StatusDown    = "down"
+	StatusUnknown string = "unknown"
+	StatusUP      string = "up"
+	StatusDown    string = "down"
 )
