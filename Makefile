@@ -46,6 +46,10 @@ migrate-auth-up: ## Run up migrations for auth service
 migrate-auth-down: ## Run down migrations for auth service
 	cd services/auth && go run cmd/migrate/main.go down
 
+migrate-auth-create: ## Create a new migration file. Usage: make migrate-auth-create name=migration_name
+	@if [ -z "$(name)" ]; then echo "Error: name argument is required"; exit 1; fi
+	cd services/auth && go run cmd/migrate/main.go create $(name)
+
 help: ## Show this help message
 	@echo "Usage: make [target]"
 	@echo ""
