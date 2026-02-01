@@ -12,7 +12,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/samims/otelkit"
+	"github.com/kernelshard/otelkit"
 
 	appErr "github.com/kernelshard/hcaas/services/auth/internal/errors"
 	"github.com/kernelshard/hcaas/services/auth/internal/model"
