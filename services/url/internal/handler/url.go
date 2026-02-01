@@ -11,7 +11,7 @@ import (
 	"github.com/kernelshard/hcaas/services/url/internal/errors"
 	"github.com/kernelshard/hcaas/services/url/internal/model"
 	"github.com/kernelshard/hcaas/services/url/internal/service"
-	"github.com/samims/otelkit"
+	"github.com/kernelshard/otelkit"
 )
 
 type URLHandler struct {

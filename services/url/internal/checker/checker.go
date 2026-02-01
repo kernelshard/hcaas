@@ -13,7 +13,7 @@ import (
 	"github.com/kernelshard/hcaas/services/url/internal/metrics"
 	"github.com/kernelshard/hcaas/services/url/internal/model"
 	"github.com/kernelshard/hcaas/services/url/internal/service"
-	"github.com/samims/otelkit"
+	"github.com/kernelshard/otelkit"
 )
 
 type URLChecker struct {

@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/kernelshard/hcaas/services/url/internal/model"
-	"github.com/samims/otelkit"
+	"github.com/kernelshard/otelkit"
 )
 
 // NotificationProducer defines the interface for Kafka publishing

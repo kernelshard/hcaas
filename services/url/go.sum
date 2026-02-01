@@ -87,8 +87,8 @@ github.com/prometheus/procfs v0.15.1 h1:YagwOFzUgYfKKHX6Dr+sHT7km/hxC76UB0leargg
 github.com/prometheus/procfs v0.15.1/go.mod h1:fB45yRUv8NstnjriLhBQLuOUt+WW4BsoGhij/e3PBqk=
 github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 h1:N/ElC8H3+5XpJzTSTfLsJV/mx9Q9g7kxmchpfZyxgzM=
 github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=
-github.com/samims/otelkit v0.3.2 h1:iBzjY7ajNmFqA0bkEQ2SDqOmlGh9SxC8uPJQdRGWik0=
-github.com/samims/otelkit v0.3.2/go.mod h1:Dr9sVTSACnNUpaQBuA7/UfQUVt9/4qLVZnkh3M3YjrI=
+github.com/kernelshard/otelkit v0.3.2 h1:iBzjY7ajNmFqA0bkEQ2SDqOmlGh9SxC8uPJQdRGWik0=
+github.com/kernelshard/otelkit v0.3.2/go.mod h1:Dr9sVTSACnNUpaQBuA7/UfQUVt9/4qLVZnkh3M3YjrI=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSSt89Yw=
 github.com/stretchr/objx v0.5.0/go.mod h1:Yh+to48EsGEfYuaHDzXPcE3xhTkx73EhmCGUpEOglKo=

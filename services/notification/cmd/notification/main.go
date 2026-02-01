@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/kernelshard/otelkit"
 	_ "github.com/lib/pq"
-	"github.com/samims/otelkit"
 
 	"github.com/kernelshard/hcaas/services/notification/internal/config"
 	"github.com/kernelshard/hcaas/services/notification/internal/handler"

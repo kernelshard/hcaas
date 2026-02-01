@@ -23,7 +23,7 @@ import (
 	"github.com/kernelshard/hcaas/services/url/internal/router"
 	"github.com/kernelshard/hcaas/services/url/internal/service"
 	"github.com/kernelshard/hcaas/services/url/internal/storage"
-	"github.com/samims/otelkit"
+	"github.com/kernelshard/otelkit"
 )
 
 const (
