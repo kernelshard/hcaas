@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/kernelshard/hcaas/services/auth/internal/model"
-	"github.com/samims/otelkit"
+	"github.com/kernelshard/otelkit"
 )
 
 // TokenService defines the interface for token-related operations

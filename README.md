@@ -222,7 +222,7 @@ This modular design ensures testability and scalability.
 *Senior Software Engineer*  
 Kolkata, India  
 Passionate about microservices, Go, and scalable system design.  
-[LinkedIn](https://www.linkedin.com/in/samiul-sk/) | [GitHub](https://github.com/samims)
+[LinkedIn](https://www.linkedin.com/in/samiul-sk/) | [GitHub](https://github.com/kernelshard)
 
 ---
 

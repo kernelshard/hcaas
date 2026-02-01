@@ -10,8 +10,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/kernelshard/otelkit"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/samims/otelkit"
 
 	"github.com/kernelshard/hcaas/services/auth/internal/config"
 	"github.com/kernelshard/hcaas/services/auth/internal/handler"

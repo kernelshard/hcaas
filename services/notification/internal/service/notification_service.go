@@ -12,7 +12,7 @@ import (
 
 	"github.com/kernelshard/hcaas/services/notification/internal/model"
 	"github.com/kernelshard/hcaas/services/notification/internal/store"
-	"github.com/samims/otelkit"
+	"github.com/kernelshard/otelkit"
 )
 
 // NotificationService defines behavior for sending notifications

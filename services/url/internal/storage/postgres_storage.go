@@ -12,7 +12,7 @@ import (
 
 	appErr "github.com/kernelshard/hcaas/services/url/internal/errors"
 	"github.com/kernelshard/hcaas/services/url/internal/model"
-	"github.com/samims/otelkit"
+	"github.com/kernelshard/otelkit"
 	"go.opentelemetry.io/otel/attribute"
 )
 

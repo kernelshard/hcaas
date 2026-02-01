@@ -13,12 +13,7 @@ import (
 	"github.com/kernelshard/hcaas/services/url/internal/metrics"
 	"github.com/kernelshard/hcaas/services/url/internal/model"
 	"github.com/kernelshard/hcaas/services/url/internal/service"
-	"github.com/samims/otelkit"
-)
-
-const (
-	StatusUP   = "up"
-	StatusDown = "down"
+	"github.com/kernelshard/otelkit"
 )
 
 type URLChecker struct {
@@ -127,7 +122,7 @@ func (uc *URLChecker) CheckAllURLs(ctx context.Context) {
 					slog.String("status", status),
 				)
 
-				if status == StatusDown {
+				if status == model.StatusDown {
 					notification := model.Notification{
 						UrlID:     url.ID,
 						Type:      "url_unhealthy",
@@ -159,7 +154,7 @@ func (uc *URLChecker) ping(parentCtx context.Context, target string) string {
 	if err != nil {
 		uc.logger.Warn("Failed to create HTTP request", slog.String("address", target), slog.Any("error", err))
 		metrics.URLCheckStatus.WithLabelValues(model.StatusDown).Inc()
-		return StatusDown
+		return model.StatusDown
 	}
 
 	start := time.Now()
@@ -170,7 +165,7 @@ func (uc *URLChecker) ping(parentCtx context.Context, target string) string {
 		uc.logger.Warn("HTTP request failed", slog.String("address", target), slog.Any("error", err))
 		metrics.URLCheckStatus.WithLabelValues(model.StatusDown).Inc()
 		metrics.URLCheckDuration.WithLabelValues(model.StatusDown).Observe(duration)
-		return StatusDown
+		return model.StatusDown
 	}
 	defer resp.Body.Close()
 
@@ -181,10 +176,11 @@ func (uc *URLChecker) ping(parentCtx context.Context, target string) string {
 		)
 		metrics.URLCheckStatus.WithLabelValues(model.StatusDown).Inc()
 		metrics.URLCheckDuration.WithLabelValues(model.StatusDown).Observe(duration)
-		return StatusDown
+		return model.StatusDown
 	}
 
 	metrics.URLCheckStatus.WithLabelValues(model.StatusUP).Inc()
 	metrics.URLCheckDuration.WithLabelValues(model.StatusUP).Observe(duration)
-	return StatusUP
+
+	return model.StatusUP
 }

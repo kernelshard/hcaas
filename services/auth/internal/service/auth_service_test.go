@@ -9,6 +9,7 @@ import (
 	appErr "github.com/kernelshard/hcaas/services/auth/internal/errors"
 	"github.com/kernelshard/hcaas/services/auth/internal/model"
 	"github.com/kernelshard/hcaas/services/auth/internal/storage"
+	"github.com/kernelshard/otelkit"
 
 	"github.com/stretchr/testify/mock"
 )
@@ -40,7 +41,7 @@ func Test_authService_Register(t *testing.T) {
 			fields: fields{
 				store: func() storage.UserStorage {
 					sut := storage.NewMockUserStorage(t)
-					sut.On("CreateUser", context.Background(), "test1@example.com", mock.Anything).
+					sut.On("CreateUser", mock.Anything, "test1@example.com", mock.Anything).
 						Return(&model.User{
 							Email: "test1@example.com",
 						}, nil)
@@ -64,7 +65,7 @@ func Test_authService_Register(t *testing.T) {
 			fields: fields{
 				store: func() storage.UserStorage {
 					sut := storage.NewMockUserStorage(t)
-					sut.On("CreateUser", context.Background(), "test1@example.com", mock.Anything).
+					sut.On("CreateUser", mock.Anything, "test1@example.com", mock.Anything).
 						Return(nil, appErr.ErrConflict)
 					return sut
 				}(),
@@ -136,12 +137,15 @@ func Test_authService_Register(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &authService{
-				store:    tt.fields.store,
-				logger:   tt.fields.logger,
-				tokenSvc: tt.fields.tokenSvc,
-			}
-			got, err := s.Register(tt.args.ctx, tt.args.email, tt.args.password)
+			tracer := otelkit.New("test-auth")
+			svc := NewAuthService(
+				tt.fields.store,
+				tt.fields.logger,
+				tt.fields.tokenSvc,
+				tracer,
+			)
+
+			got, err := svc.Register(tt.args.ctx, tt.args.email, tt.args.password)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("authService.Register() error = %v, wantErr %v", err, tt.wantErr)
 				return

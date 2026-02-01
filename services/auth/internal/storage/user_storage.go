@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/samims/otelkit"
+	"github.com/kernelshard/otelkit"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/kernelshard/hcaas/services/auth/internal/model"

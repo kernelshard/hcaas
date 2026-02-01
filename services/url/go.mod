@@ -9,7 +9,7 @@ require (
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/joho/godotenv v1.5.1
 	github.com/prometheus/client_golang v1.22.0
-	github.com/samims/otelkit v0.3.2
+	github.com/kernelshard/otelkit v0.4.1
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.62.0
 	go.opentelemetry.io/otel v1.37.0
 )
